@@ -1,0 +1,2168 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>가로세로 낱말퀴즈</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap">
+<style>
+/* Layout: stage map (10 foldable chapters × 50 원고지 tiles), large type for older eyes → play screen (board, active clue + hint strip, input dock, clue ledger; two columns on wide screens) */
+:root{
+  --paper:#f6f5ef;      /* page ground */
+  --sheet:#fffffb;      /* cell paper */
+  --rule:#3d7a5c;       /* 원고지 green rule */
+  --rule-soft:#cfe0d4;
+  --ink:#1d2622;        /* text */
+  --ink-2:#5b6861;      /* muted text */
+  --blank:#9fb0a6;      /* unused cells */
+  --pen:#2b4fa3;        /* player's writing */
+  --hi:#fff0b8;         /* active word */
+  --hi-cell:#ffd65c;    /* active cell */
+  --star:#d99a00;
+  --star-off:#d5d9d3;
+  --ok:#2f7d4f;
+  --bad:#c0392b;
+  --bad-bg:#fbe3df;
+  --reveal:#8a5a00;
+  --f-display:'Gowun Batang','Nanum Myeongjo',serif;
+  --f-body:'IBM Plex Sans KR','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --paper:#141a17;--sheet:#2b3731;--rule:#6fb58f;--rule-soft:#2d3d34;--ink:#e8eee9;--ink-2:#9aaba1;
+  --blank:#080b0a;--pen:#9dbcff;--hi:#3d3a22;--hi-cell:#7a6516;--star:#ffcf4a;--star-off:#3f4b45;
+  --ok:#6fcf97;--bad:#ff8a7a;--bad-bg:#4a2320;--reveal:#f0c060;color-scheme:dark}}
+:root[data-theme="dark"]{
+  --paper:#141a17;--sheet:#2b3731;--rule:#6fb58f;--rule-soft:#2d3d34;--ink:#e8eee9;--ink-2:#9aaba1;
+  --blank:#080b0a;--pen:#9dbcff;--hi:#3d3a22;--hi-cell:#7a6516;--star:#ffcf4a;--star-off:#3f4b45;
+  --ok:#6fcf97;--bad:#ff8a7a;--bad-bg:#4a2320;--reveal:#f0c060;color-scheme:dark}
+
+[hidden]{display:none!important}
+html,body{height:100%}
+body{background:var(--paper);color:var(--ink);font-family:var(--f-body);font-size:19px;line-height:1.55;padding:0 16px}
+h1{font-family:var(--f-display);font-weight:700;font-size:2rem;margin:0;letter-spacing:-.01em;text-wrap:balance}
+h1 small{display:block;font-family:var(--f-body);font-size:.8rem;font-weight:500;color:var(--ink-2);letter-spacing:.06em}
+.btn{font:600 1.05rem var(--f-body);border-radius:12px;padding:14px 16px;min-height:56px;cursor:pointer;border:1.5px solid var(--rule);background:var(--sheet);color:var(--rule)}
+.btn.primary{background:var(--rule);color:var(--sheet)}
+.btn:disabled{opacity:.45;cursor:default}
+.btn:focus-visible,.tile:focus-visible,.clue-list li:focus-visible,.back:focus-visible{outline:3px solid var(--pen);outline-offset:2px}
+.stars{color:var(--star);letter-spacing:.05em;white-space:nowrap}
+.stars .off{color:var(--star-off)}
+
+/* ---------- stage map ---------- */
+.home{max-width:620px;margin:0 auto;padding-block:18px 48px;display:grid;gap:22px}
+.summary{display:grid;gap:8px;background:var(--sheet);border:1.5px solid var(--rule);border-radius:12px;padding:14px 16px}
+.summary-row{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;font-variant-numeric:tabular-nums}
+.summary-row b{font-family:var(--f-display);font-size:1.5rem}
+.continue{font-size:1.25rem;min-height:68px}
+.bar{height:12px;border-radius:99px;background:var(--rule-soft);overflow:hidden}
+.bar i{display:block;height:100%;background:var(--rule);border-radius:99px}
+.chapter{border:1.5px solid var(--rule);border-radius:12px;background:var(--sheet)}
+.chapter summary{list-style:none;cursor:pointer;padding:14px 16px;display:grid;grid-template-columns:1fr auto;gap:2px 10px;align-items:center}
+.chapter summary::-webkit-details-marker{display:none}
+.chapter summary .t{font-family:var(--f-display);font-weight:700;font-size:1.3rem;color:var(--rule)}
+.chapter summary .s{grid-column:1;font-size:.9rem;color:var(--ink-2);font-variant-numeric:tabular-nums}
+.chapter summary .arrow{grid-row:1/3;grid-column:2;font-size:1.4rem;color:var(--rule);transition:transform .15s}
+.chapter[open] summary .arrow{transform:rotate(90deg)}
+.chapter summary:focus-visible{outline:3px solid var(--pen);outline-offset:2px;border-radius:12px}
+.chapter .tiles{padding:0 12px 14px}
+.tiles{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
+.tile{aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border:1.5px solid var(--rule);border-radius:8px;background:var(--sheet);color:var(--ink);cursor:pointer;padding:2px;font:inherit}
+.tile .num{font-family:var(--f-display);font-weight:700;font-size:1.5rem;line-height:1}
+.tile .stars{font-size:.8rem}
+.tile.locked{background:var(--rule-soft);border-color:var(--rule-soft);color:var(--ink-2);cursor:default}
+.tile.locked .num{color:var(--ink-2);opacity:.6}
+.tile.next{background:var(--hi);box-shadow:0 0 0 3px var(--hi-cell)}
+.tile .go{font-size:.8rem;font-weight:600;color:var(--rule)}
+.free{display:grid;gap:8px}
+.free h2{font-family:var(--f-display);font-size:1.3rem;margin:0;color:var(--rule)}
+.free p{margin:0;font-size:.95rem;color:var(--ink-2)}
+.free .row{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+
+/* ---------- play ---------- */
+.wrap{max-width:980px;margin:0 auto;padding-block:12px 40px;display:grid;grid-template-columns:minmax(0,1fr);gap:16px}
+@media (min-width:860px){.wrap{grid-template-columns:minmax(0,480px) minmax(0,1fr);align-items:start}.top{grid-column:1/-1}}
+.top{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;justify-content:space-between}
+.top-left{display:flex;align-items:center;gap:10px;min-width:0}
+.back{border:1.5px solid var(--rule);background:var(--sheet);color:var(--rule);font:600 1.05rem var(--f-body);cursor:pointer;padding:10px 14px;border-radius:12px;min-height:52px}
+.stage-name{font-family:var(--f-display);font-weight:700;font-size:1.55rem;line-height:1.2}
+.stage-name small{display:block;font-family:var(--f-body);font-size:.85rem;font-weight:500;color:var(--ink-2)}
+.meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.stat{font-variant-numeric:tabular-nums;font-size:1rem;color:var(--ink-2);padding:0 4px}
+.stat b{color:var(--ink);font-weight:600}
+
+.play{display:grid;grid-template-columns:minmax(0,1fr);gap:12px;min-width:0}
+.board-wrap{overflow-x:auto;overflow-y:hidden;max-width:100%;-webkit-overflow-scrolling:touch}
+.board{--cell:40px;display:grid;background:var(--rule);border:2px solid var(--rule);gap:1px;user-select:none;touch-action:manipulation;margin:0 auto;width:max-content}
+.cell{position:relative;width:var(--cell);height:var(--cell);min-width:0;overflow:hidden;background:var(--sheet);display:flex;align-items:center;justify-content:center;
+  font-family:var(--f-display);font-weight:700;color:var(--pen);font-size:calc(var(--cell) * .6);cursor:pointer;padding:0;border:0}
+.cell.x{background:var(--blank);cursor:default}
+.cell .no{position:absolute;top:1px;left:2px;font:600 max(10px, calc(var(--cell) * .24)) var(--f-body);color:var(--ink-2);line-height:1}
+.cell.inword{background:var(--hi)}
+.cell.cur{background:var(--hi-cell)}
+.cell.rev{color:var(--reveal)}
+.cell.wrong{background:var(--bad-bg);color:var(--bad)}
+.cell.done{color:var(--ok)}
+.cell:focus-visible{outline:3px solid var(--pen);outline-offset:-3px}
+
+.clue-now{display:flex;align-items:stretch;gap:6px;background:var(--sheet);border:2px solid var(--rule);border-radius:12px;padding:10px 6px}
+.clue-now .nav{border:0;background:transparent;color:var(--rule);font-size:2rem;padding:0 8px;min-width:44px;cursor:pointer;border-radius:6px}
+.clue-now .nav:hover{background:var(--rule-soft)}
+.clue-txt{flex:1;min-width:0;display:grid;gap:2px}
+.clue-tag{font-size:.95rem;font-weight:600;color:var(--rule);letter-spacing:.04em}
+.clue-body{font-size:1.3rem;font-weight:600;line-height:1.45}
+.clue-hint{display:flex;flex-wrap:wrap;gap:6px;margin-top:2px}
+.chip{font-size:1.05rem;border-radius:99px;padding:3px 12px;background:var(--hi);color:var(--ink);border:1px solid var(--hi-cell)}
+.chip b{font-weight:600;color:var(--reveal);margin-right:4px}
+.chip.cho{font-family:var(--f-display);font-weight:700;letter-spacing:.12em}
+
+.dock{display:flex;gap:8px}
+.dock input{flex:1;min-width:0;font:700 1.5rem var(--f-display);padding:10px 14px;min-height:60px;border:2px solid var(--rule);border-radius:12px;background:var(--sheet);color:var(--ink)}
+.dock input:focus{outline:3px solid var(--rule-soft);border-color:var(--rule)}
+.choices{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.choice{font:700 1.45rem var(--f-display);letter-spacing:.04em;min-height:64px;border-radius:12px;border:2px solid var(--rule);background:var(--sheet);color:var(--ink);cursor:pointer;padding:8px 6px;line-height:1.2}
+.choice:hover{background:var(--rule-soft)}
+.choice:focus-visible{outline:3px solid var(--pen);outline-offset:2px}
+.choice.no{border-color:var(--bad);color:var(--bad);background:var(--bad-bg);text-decoration:line-through;cursor:default}
+.choice.yes{border-color:var(--ok);background:var(--ok);color:var(--sheet)}
+.choices-note{grid-column:1/-1;text-align:center;font-size:1.1rem;color:var(--ok);font-weight:600;padding:12px 0}
+.choices-help{grid-column:1/-1;font-size:.95rem;color:var(--ink-2);margin:0}
+@media (prefers-reduced-motion:no-preference){.choice.shake{animation:shake .35s}@keyframes shake{25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}}
+.tools{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.tools .btn{padding:10px 4px;font-size:1rem;line-height:1.25}
+.tools .btn small{display:block;font-size:.8rem;font-weight:500;opacity:.8}
+.toast{min-height:1.4em;font-size:1.05rem;font-weight:500;color:var(--ink-2);text-align:center}
+.confirm{display:flex;gap:8px;justify-content:center;align-items:center;flex-wrap:wrap;font-size:1.05rem;background:var(--hi);border-radius:12px;padding:10px}
+
+.ledger{display:grid;gap:16px;min-width:0}
+@media (min-width:520px) and (max-width:859px){.ledger{grid-template-columns:1fr 1fr}}
+.ledger h2{font-family:var(--f-display);font-size:1.35rem;margin:0 0 6px;padding-bottom:4px;border-bottom:1.5px solid var(--rule);color:var(--rule)}
+.clue-list{list-style:none;margin:0;padding:0;display:grid;gap:2px}
+.clue-list li{display:grid;grid-template-columns:2em 1fr;gap:6px;padding:10px 8px;font-size:1.1rem;border-radius:6px;cursor:pointer}
+.clue-list li:hover{background:var(--rule-soft)}
+.clue-list li.on{background:var(--hi)}
+.clue-list li.solved .t{color:var(--ink-2);text-decoration:line-through;text-decoration-color:var(--ok)}
+.clue-list .n{font-weight:600;color:var(--rule);font-variant-numeric:tabular-nums}
+.clue-list .len{color:var(--ink-2);font-size:.8em;white-space:nowrap}
+.clue-list .hint{color:var(--reveal);font-size:.8em;white-space:nowrap}
+
+.overlay{position:fixed;inset:0;background:color-mix(in srgb,var(--ink) 55%,transparent);display:flex;align-items:center;justify-content:center;padding:16px;z-index:10}
+.card{background:var(--sheet);color:var(--ink);border:2px solid var(--rule);border-radius:14px;padding:22px 20px;max-width:380px;max-height:100%;overflow:auto;width:100%;text-align:center;display:grid;gap:10px}
+.card h3{font-family:var(--f-display);font-size:1.8rem;margin:0;color:var(--rule)}
+.big-stars{font-size:3.2rem;line-height:1;display:flex;justify-content:center;gap:6px}
+.big-stars span{color:var(--star-off)}
+.big-stars span.on{color:var(--star)}
+.card dl{display:grid;grid-template-columns:auto auto;justify-content:center;gap:4px 14px;margin:2px 0 4px;font-variant-numeric:tabular-nums}
+.card dt{color:var(--ink-2)}.card dd{margin:0;font-weight:600;text-align:left}
+.card .rule{font-size:.9rem;color:var(--ink-2);margin:0}
+.card .actions{display:grid;gap:6px}
+.unlock{font-weight:600;color:var(--ok);margin:0}
+@media (prefers-reduced-motion:no-preference){
+  .cell{transition:background-color .12s}
+  .big-stars span.on{animation:pop .45s cubic-bezier(.3,1.6,.5,1) both}
+  .big-stars span:nth-child(2).on{animation-delay:.18s}
+  .big-stars span:nth-child(3).on{animation-delay:.36s}
+  @keyframes pop{from{transform:scale(.2);opacity:0}to{transform:scale(1);opacity:1}}
+}
+</style>
+<style>body{margin:0}:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}</style>
+</head>
+<body>
+
+
+<!-- ============ 스테이지 지도 ============ -->
+<main class="home" id="home">
+  <h1>가로세로 낱말퀴즈<small>스테이지를 하나씩 깨고 별을 모으세요</small></h1>
+  <button type="button" class="btn primary continue" id="continueBtn">스테이지 1 시작하기</button>
+  <div class="summary">
+    <div class="summary-row"><span>모은 별</span><b id="sumStars">0 / 1500</b></div>
+    <div class="bar" aria-hidden="true"><i id="sumBar" style="width:0%"></i></div>
+    <div class="summary-row"><span class="stat">깬 스테이지 <b id="sumCleared">0</b></span><span class="stat">별 3개 = 힌트 없이 완성</span></div>
+  </div>
+  <div id="chapters" style="display:grid;gap:12px"></div>
+  <section class="free">
+    <h2>자유 모드</h2>
+    <p>매번 새로 만들어지는 퍼즐. 기록만 남고 별은 없어요.</p>
+    <div class="row">
+      <button type="button" class="btn" data-free="easy">쉬움</button>
+      <button type="button" class="btn" data-free="normal">보통</button>
+      <button type="button" class="btn" data-free="hard">어려움</button>
+    </div>
+  </section>
+</main>
+
+<!-- ============ 게임 화면 ============ -->
+<div class="wrap" id="game" hidden>
+  <header class="top">
+    <div class="top-left">
+      <button type="button" class="back" id="backBtn">‹ 목록</button>
+      <div class="stage-name" id="stageName"></div>
+    </div>
+    <div class="meta">
+      <span class="stat">시간 <b id="timer">00:00</b></span>
+      <span class="stat">예상 <b class="stars" id="liveStars"></b></span>
+    </div>
+  </header>
+
+  <section class="play">
+    <div class="board-wrap" id="boardWrap"><div class="board" id="board" role="grid" aria-label="퍼즐 판"></div></div>
+
+    <div class="clue-now">
+      <button type="button" class="nav" id="prevBtn" aria-label="이전 문제">‹</button>
+      <div class="clue-txt">
+        <div class="clue-tag" id="clueTag"></div>
+        <div class="clue-body" id="clueBody"></div>
+        <div class="clue-hint" id="clueHint"></div>
+      </div>
+      <button type="button" class="nav" id="nextBtn" aria-label="다음 문제">›</button>
+    </div>
+
+    <div class="choices" id="choices" role="group" aria-label="정답 고르기"></div>
+
+    <form class="dock" id="dock" autocomplete="off" hidden>
+      <input id="answer" type="text" inputmode="text" lang="ko" placeholder="정답을 입력하세요" aria-label="정답 입력">
+      <button type="submit" class="btn primary">입력</button>
+    </form>
+
+    <div class="tools">
+      <button type="button" class="btn" id="hintBtn">힌트</button>
+      <button type="button" class="btn" id="letterBtn">한 글자 공개<small>+3점</small></button>
+      <button type="button" class="btn" id="revealBtn">정답 보기<small>+5점</small></button>
+      <button type="button" class="btn" id="zoomBtn">판 크게</button>
+      <button type="button" class="btn" id="modeBtn">키보드로<small>직접 입력</small></button>
+      <button type="button" class="btn" id="skipBtn">다음 문제 ›</button>
+      <button type="button" class="btn" id="checkBtn" hidden>채점</button>
+    </div>
+    <div class="confirm" id="confirmBox" hidden>
+      <span id="confirmMsg"></span>
+      <button type="button" class="btn primary" id="confirmYes">예</button>
+      <button type="button" class="btn" id="confirmNo">아니요</button>
+    </div>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  </section>
+
+  <section class="ledger">
+    <div><h2>가로 열쇠</h2><ol class="clue-list" id="listH"></ol></div>
+    <div><h2>세로 열쇠</h2><ol class="clue-list" id="listV"></ol></div>
+  </section>
+</div>
+
+<div class="overlay" id="doneBox" hidden>
+  <div class="card" role="dialog" aria-modal="true" aria-labelledby="doneTitle">
+    <h3 id="doneTitle">완성!</h3>
+    <div class="big-stars" id="doneStars" aria-hidden="true"><span>★</span><span>★</span><span>★</span></div>
+    <p class="unlock" id="doneUnlock" hidden></p>
+    <dl>
+      <dt>걸린 시간</dt><dd id="dTime"></dd>
+      <dt>힌트 점수</dt><dd id="dHints"></dd>
+      <dt>최고 기록</dt><dd id="dBest"></dd>
+    </dl>
+    <p class="rule" id="doneRule">힌트 점수 0 → ★★★ · 1~6 → ★★ · 7 이상 → ★<br>(잘못 고르면 1점)</p>
+    <div class="actions">
+      <button type="button" class="btn primary" id="nextStageBtn">다음 스테이지</button>
+      <button type="button" class="btn" id="retryBtn">다시 도전</button>
+      <button type="button" class="btn" id="toMapBtn">스테이지 목록</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const WORD_BANK_RAW = `
+사과|과일|빨갛고 둥근 과일, 잘못을 비는 일과 소리가 같다
+사자|동물|백수의 왕이라 불리는 갈기 달린 맹수
+사진|생활용품|카메라로 찍어 남긴 장면
+사전|학용품|낱말의 뜻을 풀이해 모아 놓은 책
+사랑|생각·행동|아끼고 소중히 여기는 마음
+사람|인물|두 발로 걷고 말을 하는 존재
+사계절|때·시기|봄, 여름, 가을, 겨울을 통틀어 이르는 말
+사다리|생활용품|높은 곳에 오를 때 딛고 올라가는 기구
+사장|직업|회사를 대표하는 우두머리
+사탕|음식|입에 넣고 녹여 먹는 달콤한 과자
+자동차|탈것|엔진으로 바퀴를 굴려 도로를 달리는 탈것
+자전거|탈것|페달을 밟아 움직이는 두 바퀴 탈것
+자석|생활용품|쇠붙이를 끌어당기는 물체
+자유|생각·행동|남에게 얽매이지 않고 마음대로 하는 상태
+자연|생활·사회|산, 강, 바다처럼 사람이 만들지 않은 세계
+자리|생활·사회|앉거나 서 있는 곳
+자장면|음식|춘장 소스에 비벼 먹는 중국식 면 요리
+기차|탈것|철로 위를 여러 칸이 이어져 달리는 탈것
+기린|동물|목이 아주 긴 초식 동물
+기자|직업|취재해서 기사를 쓰는 사람
+기억|생각·행동|지난 일을 잊지 않고 떠올리는 것
+기타|악기|여섯 줄을 튕겨 연주하는 현악기
+기도|생각·행동|신에게 바라는 바를 비는 일
+기념일|문화·명절|특별한 일을 기억하려고 정한 날
+수박|과일|여름에 먹는 줄무늬가 있는 큰 과일
+수영|스포츠|물속에서 팔다리를 움직여 헤엄치는 운동
+수학|공부|숫자와 도형을 다루는 과목
+수건|생활용품|몸이나 손의 물기를 닦는 천
+수요일|때·시기|화요일 다음 날
+수도|생활·사회|한 나라의 중앙 정부가 있는 도시
+수도꼭지|생활용품|돌리면 물이 나오는 장치
+시계|기계·가전|시간을 알려 주는 기계
+시장|장소|여러 가게가 모여 물건을 사고파는 곳
+시간|때·시기|과거에서 현재, 미래로 흘러가는 것
+시인|직업|시를 짓는 사람
+시험|공부|실력을 알아보기 위한 평가
+시소|놀이|양 끝에 앉아 번갈아 오르내리는 놀이기구
+인형|놀이|사람이나 동물 모양으로 만든 장난감
+인사|생각·행동|만나거나 헤어질 때 예의를 표하는 일
+인터넷|생활·사회|전 세계의 컴퓨터를 잇는 통신망
+인간|인물|'사람'을 한자어로 이르는 말
+전화|기계·가전|멀리 있는 사람과 목소리로 이야기하는 기기
+전기|생활·사회|전등을 켜고 가전제품을 움직이는 에너지
+전쟁|생활·사회|나라와 나라가 무력으로 싸우는 일
+정원|장소|집 안에 꽃과 나무를 가꾸어 놓은 뜰
+정답|공부|옳은 답
+정류장|장소|버스가 멈춰 손님을 태우는 곳
+문제|공부|답을 구해야 하는 물음
+문어|동물|다리가 여덟 개이고 먹물을 뿜는 바다 동물
+화가|직업|그림 그리는 것을 직업으로 하는 사람
+화분|생활용품|꽃이나 식물을 심어 기르는 그릇
+화요일|때·시기|월요일 다음 날
+화산|자연|땅속의 용암이 터져 나오는 산
+화장실|장소|용변을 보고 손을 씻는 곳
+장미|식물|가시가 있고 향기가 짙은 꽃
+장갑|옷·잡화|추울 때 손에 끼는 것
+장마|자연|여름철에 여러 날 계속 내리는 비
+장화|옷·잡화|비 오는 날 신는 목이 긴 신발
+장난감|놀이|아이들이 가지고 노는 물건
+장군|직업|군대를 지휘하는 높은 계급의 군인
+도서관|장소|책을 모아 두고 빌려주는 곳
+도시|장소|사람과 건물이 많이 모인 큰 지역
+도토리|식물|다람쥐가 좋아하는 참나무 열매
+도둑|인물|남의 물건을 몰래 훔치는 사람
+가방|생활용품|물건을 넣어 들거나 메는 것
+가위|생활용품|종이나 천을 자르는 도구
+가족|인물|부모와 자식 등 한 집안을 이루는 사람들
+가을|때·시기|단풍이 들고 곡식이 익는 계절
+가게|장소|물건을 늘어놓고 파는 곳
+가수|직업|노래 부르는 것을 직업으로 하는 사람
+나무|식물|줄기와 가지가 단단한 여러해살이 식물
+나비|곤충|꽃을 찾아다니는 날개가 고운 곤충
+나라|생활·사회|국민과 영토와 주권을 가진 집단
+무지개|자연|비 갠 뒤 하늘에 뜨는 일곱 빛깔 띠
+무궁화|식물|대한민국의 나라꽃
+고양이|동물|야옹 하고 우는 반려동물
+고구마|채소|땅속에서 자라는 달콤한 덩이뿌리
+고래|동물|바다에 사는 가장 큰 포유류
+고추|채소|매운맛이 나는 길쭉한 채소
+대학교|장소|고등학교를 마치고 진학하는 학교
+대나무|식물|속이 비어 있고 마디가 있는 나무
+대통령|직업|공화국을 대표하는 국가 원수
+대회|스포츠|여럿이 모여 실력을 겨루는 행사
+바다|자연|지구 표면의 대부분을 덮은 짠물
+바나나|과일|노랗고 길쭉한 열대 과일
+바람|자연|공기가 움직이는 현상
+바지|옷·잡화|두 다리를 꿰어 입는 아래옷
+하늘|자연|머리 위로 높고 넓게 펼쳐진 공간
+하마|동물|입이 매우 크고 물가에 사는 덩치 큰 동물
+하루|때·시기|밤낮 스물네 시간
+하품|생각·행동|졸리거나 지루할 때 입을 크게 벌리는 것
+학교|장소|학생들이 선생님께 배우는 곳
+학생|인물|학교에 다니며 공부하는 사람
+학원|장소|학교 밖에서 따로 배우러 다니는 곳
+우산|생활용품|비를 막기 위해 펼쳐 쓰는 것
+우유|음료|소의 젖, 흰색 음료
+우주|자연|별과 행성을 모두 품은 끝없는 공간
+주사|생활·사회|바늘로 약을 몸속에 넣는 것
+주머니|생활용품|옷에 달려 작은 물건을 넣는 곳
+주말|때·시기|토요일과 일요일
+주차장|장소|차를 세워 두는 넓은 곳
+주전자|생활용품|물을 끓이거나 담아 따르는 그릇
+아기|가족|갓 태어난 어린아이
+아침|때·시기|해가 뜰 무렵부터 한나절까지
+아버지|가족|나를 낳아 주신 남자 어른
+어머니|가족|나를 낳아 주신 여자 어른
+라면|음식|꼬불꼬불한 면을 끓여 먹는 간편식
+라디오|기계·가전|전파로 방송을 들려주는 기기
+마음|생각·행동|생각하고 느끼는 정신
+마술|문화·명절|손재주로 신기한 일을 보여 주는 재주
+마차|탈것|말이 끄는 수레
+모자|옷·잡화|머리에 쓰는 물건
+모기|곤충|여름밤 윙윙거리며 피를 빠는 곤충
+모래|자연|바닷가에 깔린 잘고 부드러운 돌 알갱이
+소나무|식물|사철 푸른 바늘잎을 가진 나무
+소리|말·언어|귀로 들리는 것
+소풍|생각·행동|경치 좋은 곳에 놀러 가는 일
+소금|음식|짠맛을 내는 하얀 조미료
+소방관|직업|불을 끄고 사람을 구하는 사람
+구름|자연|하늘에 떠다니는 작은 물방울의 덩어리
+구두|옷·잡화|가죽으로 만든 정장용 신발
+구급차|탈것|사이렌을 울리며 환자를 병원으로 실어 나르는 차
+공원|장소|사람들이 쉬도록 나무와 벤치를 갖춘 곳
+공기|자연|우리가 숨 쉬는 기체
+공주|인물|임금의 딸
+강아지|동물|개의 새끼
+강물|자연|강에 흐르는 물
+의사|직업|병을 진찰하고 고쳐 주는 사람
+의자|생활용품|앉을 때 쓰는 가구
+연필|학용품|흑연 심으로 글씨를 쓰는 도구
+연극|문화·명절|무대에서 배우가 연기하는 공연
+연못|자연|넓고 우묵한 땅에 물이 고인 곳
+선물|생각·행동|마음을 담아 남에게 주는 물건
+선생님|직업|학생을 가르치는 분
+신문|생활용품|날마다 소식을 전하는 인쇄물
+신발|옷·잡화|발에 신는 것
+운동|생각·행동|몸을 튼튼하게 하려고 움직이는 것
+운동화|옷·잡화|달리기할 때 신기 편한 신발
+동물|자연|스스로 움직이며 사는 생물, 식물의 반대
+동물원|장소|여러 짐승을 모아 기르며 구경시키는 곳
+동생|가족|나보다 나이가 어린 형제자매
+감자|채소|땅속줄기를 먹는 둥글둥글한 채소
+김치|음식|배추를 절여 양념한 대표적인 전통 음식
+김밥|음식|김 위에 밥과 재료를 얹어 말아 썬 음식
+비행기|탈것|날개가 있어 하늘을 나는 탈것
+비누|생활용품|거품을 내어 때를 씻어 내는 물건
+비빔밥|음식|밥에 나물과 고추장을 넣고 비빈 음식
+호랑이|동물|줄무늬가 있는 고양잇과의 큰 맹수
+호수|자연|땅이 우묵하게 패어 물이 괸 넓은 곳
+병원|장소|환자를 진료하고 치료하는 곳
+지도|생활용품|땅의 모양을 줄여서 평면에 그린 것
+지구|자연|우리가 사는 푸른 행성
+지우개|학용품|연필 자국을 문질러 없애는 물건
+지하철|탈것|땅속으로 다니는 전철
+지하|자연|땅의 속
+거울|생활용품|모습을 비추어 보는 물건
+거북이|동물|딱딱한 등딱지를 지고 느리게 걷는 동물
+미소|생각·행동|소리 없이 빙긋이 웃는 웃음
+미술|문화·명절|그림, 조각 등 눈으로 보는 예술
+미용실|장소|머리를 자르고 다듬어 주는 곳
+노래|문화·명절|가사에 곡조를 붙여 부르는 것
+노트북|기계·가전|접어서 들고 다니는 컴퓨터
+놀이터|장소|미끄럼틀과 그네가 있는 곳
+오리|동물|꽥꽥 우는 물새
+오이|채소|초록색에 오톨도톨한 길쭉한 채소
+이불|생활용품|잠잘 때 몸을 덮는 것
+이름|말·언어|사람이나 사물을 부르는 말
+이야기|말·언어|어떤 일에 대해 줄거리 있게 하는 말
+치약|생활용품|이를 닦을 때 칫솔에 짜서 쓰는 것
+친구|인물|가깝게 오래 사귄 사람
+여름|때·시기|일 년 중 가장 더운 계절
+여행|생각·행동|다른 고장이나 나라를 돌아다니며 구경하는 일
+겨울|때·시기|눈이 내리는 추운 계절
+편지|생활용품|안부나 소식을 적어 보내는 글
+포도|과일|송이로 열리는 보라색 과일
+피아노|악기|건반을 눌러 소리 내는 큰 악기
+태양|자연|낮을 밝히는 별, 해
+태극기|문화·명절|대한민국의 국기
+토끼|동물|귀가 길고 깡충깡충 뛰는 동물
+토요일|때·시기|금요일 다음 날
+경찰|직업|치안과 질서를 지키는 사람
+물고기|동물|아가미로 숨 쉬고 지느러미로 헤엄치는 동물
+눈사람|놀이|겨울에 흰 눈을 뭉쳐 만든 인형
+달걀|음식|닭이 낳은 알
+달력|생활용품|날짜와 요일을 적어 놓은 표
+딸기|과일|씨가 겉에 박혀 있는 빨간 봄 과일
+책상|학용품|공부하거나 글을 쓸 때 쓰는 가구
+책가방|학용품|학생이 교과서를 넣어 등에 메는 것
+칠판|학용품|교실 앞에 걸어 분필로 쓰는 판
+컴퓨터|기계·가전|정보를 계산하고 처리하는 전자 기계
+축구|스포츠|공을 발로 차서 골문에 넣는 경기
+야구|스포츠|투수가 던진 공을 타자가 방망이로 치는 경기
+농구|스포츠|공을 튀기다가 바스켓에 던져 넣는 경기
+배구|스포츠|네트 너머로 공을 손으로 쳐 넘기는 경기
+배우|직업|영화나 연극에서 연기하는 사람
+한글|문화·명절|세종대왕이 만든 우리 글자
+한복|옷·잡화|우리 고유의 전통 옷
+한강|지명|서울 한가운데를 흐르는 큰 강
+설날|문화·명절|음력 1월 1일, 떡국을 먹는 명절
+설탕|음식|단맛을 내는 하얀 가루
+추석|문화·명절|음력 8월 15일, 한가위
+송편|음식|추석에 빚어 먹는 반달 모양 떡
+떡국|음식|설날 아침에 먹는 떡을 넣어 끓인 국
+불고기|음식|양념한 쇠고기를 구운 요리
+제주도|지명|우리나라에서 가장 큰 섬
+서울|지명|대한민국의 수도
+부산|지명|우리나라 제2의 도시이자 큰 항구 도시
+교실|장소|학교에서 수업을 하는 방
+숙제|공부|집에서 해 오도록 내준 과제
+일기|공부|그날그날 겪은 일과 느낌을 적는 글
+일요일|때·시기|한 주의 첫날이자 쉬는 날
+일출|자연|해가 떠오르는 것
+월요일|때·시기|주말이 끝나고 시작되는 평일
+금요일|때·시기|목요일 다음 날
+목요일|때·시기|수요일 다음 날
+금메달|생활용품|올림픽에서 1등에게 주는 상
+냉장고|기계·가전|음식을 차갑게 보관하는 가전제품
+세탁기|기계·가전|빨래를 해 주는 기계
+청소기|기계·가전|먼지를 빨아들이는 기계
+요리사|직업|음식 만드는 것을 직업으로 하는 사람
+과자|음식|간식으로 먹는 바삭한 먹을거리
+빵집|장소|식빵과 케이크를 만들어 파는 가게
+커피|음료|볶은 원두를 갈아 우려낸 쌉쌀한 음료
+녹차|음료|푸른 찻잎을 우려 마시는 차
+회사|장소|이익을 얻으려고 사업을 하는 조직
+군인|직업|군대에서 나라를 지키는 사람
+간식|음식|끼니와 끼니 사이에 먹는 음식
+식당|장소|음식을 만들어 파는 곳
+당근|채소|토끼가 좋아하는 주황색 뿌리채소
+근육|생활·사회|몸을 움직이게 하는 힘살
+육지|자연|물에 덮이지 않은 땅
+차표|생활용품|탈것을 탈 때 사는 승차권
+표정|생각·행동|마음속 감정이 얼굴에 드러난 모습
+출구|장소|밖으로 나가는 곳
+차례|문화·명절|순서대로 돌아오는 번, 명절 아침의 제사
+게임|놀이|규칙을 정해 놓고 즐기는 놀이
+임금|인물|옛날 나라를 다스리던 왕
+탕수육|음식|튀긴 고기에 새콤달콤한 소스를 부은 요리
+산책|스포츠|바람을 쐬며 천천히 걷는 것
+방학|때·시기|학교가 한동안 수업을 쉬는 기간
+원숭이|동물|나무를 잘 타고 흉내를 잘 내는 동물
+그림|문화·명절|선과 색으로 형상을 나타낸 것
+그네|놀이|줄에 매달려 앞뒤로 흔드는 놀이기구
+네모|생활·사회|각이 네 개인 모양
+별자리|자연|밤하늘의 별들을 이어 이름 붙인 것
+리본|생활용품|매듭을 지어 꾸미는 띠
+터널|장소|산이나 땅속을 뚫어 만든 길
+실수|생각·행동|조심하지 않아 저지른 잘못
+기차역|장소|열차를 타고 내리는 곳
+코끼리|동물|코가 길고 귀가 큰, 땅 위에서 가장 큰 동물
+여우|동물|꾀가 많다고 알려진 꼬리가 풍성한 동물
+늑대|동물|무리 지어 사냥하며 달밤에 우는 동물
+사슴|동물|수컷 머리에 나뭇가지 같은 뿔이 난 순한 동물
+노루|동물|사슴과 비슷하나 몸집이 작은 산짐승
+다람쥐|동물|볼에 먹이를 넣어 나르는 줄무늬 작은 동물
+고슴도치|동물|몸에 가시가 돋은 작은 동물
+두더지|동물|땅속에 굴을 파고 사는 동물
+너구리|동물|눈 주위가 검은 산짐승
+멧돼지|동물|산에 사는 사나운 돼지
+돼지|동물|꿀꿀 우는 가축
+송아지|동물|소의 새끼
+망아지|동물|말의 새끼
+병아리|새|닭의 새끼, 삐약삐약
+염소|동물|턱수염이 있고 풀을 뜯는 가축
+낙타|동물|등에 혹이 있는 사막의 동물
+얼룩말|동물|검은색과 흰색 줄무늬가 있는 말
+캥거루|동물|새끼를 배 주머니에 넣고 다니는 동물
+판다|동물|대나무를 먹는 흑백 무늬의 곰
+악어|동물|입이 크고 이빨이 날카로운 물가의 파충류
+개구리|동물|개굴개굴 우는 동물
+올챙이|동물|개구리의 새끼
+도마뱀|동물|위험하면 꼬리를 끊고 달아나는 파충류
+구렁이|동물|몸집이 큰 뱀, 옛날 집을 지킨다고 여겼다
+박쥐|동물|낮에는 거꾸로 매달려 자고 밤에 나는 동물
+참새|날짐승|전깃줄에 앉아 짹짹 우는 작은 새
+까치|새|반가운 손님이 온다고 알려진 새
+까마귀|새|온몸이 검고 까악 우는 새
+비둘기|새|평화를 상징하는 새
+제비|새|봄에 와서 처마 밑에 둥지를 짓는 새
+독수리|새|날개가 크고 힘센 사나운 새
+부엉이|새|밤에 활동하며 부엉부엉 우는 새
+기러기|새|가을에 V자로 떼 지어 날아오는 철새
+두루미|새|목과 다리가 길고 우아한 흰 새, 학
+공작|새|수컷이 화려한 꼬리 깃을 부채처럼 펴는 새
+앵무새|날짐승|사람 말을 흉내 내는 새
+펭귄|새|날지 못하고 남극에 사는 새
+수탉|새|새벽에 꼬끼오 우는 닭의 수컷
+암탉|새|알을 낳는 닭의 암컷
+갈매기|새|바닷가에서 끼룩끼룩 우는 새
+딱따구리|새|부리로 나무를 쪼아 구멍을 내는 새
+꿀벌|곤충|꽃에서 꿀을 모으는 곤충
+개미|곤충|부지런하기로 소문난 작은 곤충
+매미|곤충|여름에 맴맴 우는 곤충
+잠자리|곤충|가을 하늘을 나는 날개 네 장의 곤충
+메뚜기|곤충|논밭에서 폴짝폴짝 뛰는 곤충
+귀뚜라미|곤충|가을밤 귀뚤귀뚤 우는 곤충
+반딧불이|곤충|꽁무니에서 빛을 내는 곤충
+무당벌레|곤충|빨간 등에 검은 점이 있는 둥근 곤충
+나방|곤충|밤에 불빛으로 모여드는 나비 닮은 곤충
+거미|벌레|줄을 쳐서 먹이를 잡는 다리 여덟 개 동물
+지렁이|벌레|비 온 뒤 땅 위로 나오는 긴 벌레
+달팽이|벌레|등에 집을 지고 느리게 기어가는 동물
+오징어|바다생물|다리가 열 개이고 먹물을 뿜는 바다 동물
+낙지|바다생물|다리가 여덟 개인 갯벌의 동물, 볶음으로 즐겨 먹는다
+새우|바다생물|허리가 굽은 갑각류, 튀김으로 인기
+꽃게|바다생물|옆으로 걷는 집게발의 바다 동물
+조개|바다생물|단단한 껍데기 두 장 속에 사는 동물
+전복|바다생물|귀한 조개, 죽을 쑤어 먹는다
+해파리|바다생물|투명하고 흐물흐물한 바다 동물
+불가사리|바다생물|별 모양의 바다 동물
+미역|바다생물|생일에 국을 끓여 먹는 바다풀
+다시마|바다생물|국물 낼 때 쓰는 넓적한 바다풀
+상어|생선|날카로운 이빨을 가진 무서운 바닷물고기
+고등어|생선|등이 푸른 생선, 구이로 즐겨 먹는다
+갈치|생선|은빛으로 길쭉한 생선
+명태|생선|말리면 북어, 얼리면 동태가 되는 생선
+조기|생선|말려서 굴비를 만드는 생선
+멸치|생선|볶음이나 국물 내는 데 쓰는 작은 생선
+연어|생선|태어난 강으로 거슬러 올라오는 물고기
+장어|생선|몸이 길고 미끈한 기운 나는 물고기
+붕어|민물고기|연못이나 냇물에 사는 흔한 물고기
+잉어|민물고기|수염이 있고 오래 사는 큰 물고기
+미꾸라지|민물고기|진흙 속에 살며 추어탕을 끓이는 물고기
+메기|민물고기|입가에 긴 수염이 있는 물고기
+진달래|꽃|봄에 산을 분홍빛으로 물들이는 꽃
+개나리|꽃|이른 봄 담장을 노랗게 물들이는 꽃
+민들레|꽃|노란 꽃이 지면 하얀 솜털 씨가 날리는 풀
+해바라기|꽃|해를 따라 도는 크고 노란 꽃
+코스모스|꽃|가을 길가에 하늘거리는 꽃
+국화|꽃|가을에 피는 향기로운 꽃
+나팔꽃|식물|아침에 피는 나팔 모양의 꽃
+봉숭아|꽃|꽃잎으로 손톱에 물을 들이는 꽃
+연꽃|식물|진흙 속에서 피어나는 깨끗한 꽃
+튤립|꽃|네덜란드를 대표하는 컵 모양의 꽃
+백합|꽃|하얗고 향기가 진한 나팔 모양 꽃
+동백꽃|식물|겨울에 피는 붉은 꽃
+벚꽃|식물|봄바람에 흩날리는 연분홍 꽃
+안개꽃|식물|자잘한 흰 꽃이 구름처럼 피는 꽃
+목련|꽃|이른 봄 잎보다 먼저 피는 크고 흰 꽃
+철쭉|꽃|진달래를 닮았지만 독이 있는 봄꽃
+은행나무|식물|가을에 노랗게 물들고 냄새나는 열매가 열리는 나무
+단풍나무|식물|가을에 잎이 빨갛게 물드는 나무
+버드나무|식물|물가에 가지를 늘어뜨린 나무
+느티나무|식물|마을 어귀에 서 있는 크고 오래된 정자나무
+밤나무|식물|가시 송이 속에 열매가 드는 나무
+감나무|식물|가을에 주황빛 열매가 주렁주렁 열리는 나무
+잣나무|식물|열매 속 고소한 씨를 먹는 바늘잎나무
+전나무|식물|성탄절 트리로 쓰는 뾰족한 나무
+갈대|식물|물가에 자라는 키 큰 풀
+잔디|식물|마당이나 운동장에 깔린 짧은 풀
+이끼|식물|그늘진 바위에 푸르게 끼는 작은 식물
+선인장|식물|가시가 있고 물 없이도 잘 사는 식물
+고사리|식물|어린 순을 나물로 먹는 풀
+인삼|약초|금산이 유명한 귀한 뿌리 약재
+참외|과일|노란 껍질에 흰 줄이 있는 여름 과일
+복숭아|과일|솜털이 있고 달콤한 여름 과일
+자두|과일|새콤달콤한 자줏빛 여름 과일
+감귤|과일|제주도에서 많이 나는 껍질이 잘 벗겨지는 과일
+홍시|과일|말랑말랑하게 익은 감
+대추|과일|제사상에 올리는 붉고 쪼글쪼글한 열매
+석류|과일|알알이 붉은 씨가 가득한 과일
+앵두|과일|작고 빨간 구슬 같은 열매
+살구|과일|복숭아보다 작은 주황색 과일
+매실|과일|청을 담가 먹는 새콤한 초록 열매
+키위|과일|털이 있는 갈색 껍질 속이 초록인 과일
+레몬|과일|아주 신 노란 과일
+파인애플|과일|겉은 까칠하고 속은 노란 열대 과일
+체리|과일|꼭지가 달린 작고 빨간 과일
+오렌지|과일|주황색 껍질의 새콤달콤한 과일
+배추|채소|김장 김치의 주재료인 채소
+양파|채소|껍질을 까면 눈물이 나는 채소
+마늘|채소|한국 요리에 빠지지 않는 매운 알뿌리
+대파|채소|국에 송송 썰어 넣는 긴 채소
+시금치|채소|뽀빠이가 먹고 힘이 나는 푸른 채소
+상추|채소|고기를 싸 먹는 잎채소
+깻잎|채소|향이 진해 장아찌로도 먹는 잎
+호박|채소|늙으면 누렇게 되는 둥근 열매채소
+가지|채소|보라색 길쭉한 채소
+콩나물|채소|콩을 물에 길러 낸 나물
+버섯|채소|숲속 그늘에서 자라는 갓 모양의 먹을거리
+도라지|채소|흰 뿌리를 나물로 먹는, 민요에도 나오는 식물
+미나리|채소|향긋한 줄기를 먹는 물가의 채소
+부추|채소|전을 부쳐 먹는 가늘고 긴 채소
+생강|채소|맵고 알싸한 뿌리 양념
+토란|채소|추석 국에 넣는 알 모양의 뿌리채소
+옥수수|곡식|여름에 쪄 먹는 알갱이가 촘촘한 곡식
+땅콩|곡식|땅속에서 열리는 고소한 콩
+보리|곡식|밥에 섞어 먹고 차로도 끓여 마시는 곡식
+찹쌀|곡식|떡을 만드는 끈기 있는 쌀
+참깨|곡식|볶아서 고소한 기름을 짜는 씨
+된장찌개|음식|구수한 장을 풀어 두부와 호박을 넣고 끓인 찌개
+김치찌개|음식|신 김치와 돼지고기로 끓인 찌개
+순두부|음식|몽글몽글하고 연한 두부
+두부|음식|콩을 갈아 굳힌 하얀 음식
+미역국|음식|생일날 아침에 먹는 국
+삼계탕|음식|복날 먹는, 닭 한 마리에 인삼을 넣은 탕
+냉면|음식|여름에 먹는 차가운 국수
+잡채|음식|당면과 채소를 볶아 무친 잔치 음식
+갈비|음식|소나 돼지의 갈빗대에 붙은 고기
+삼겹살|음식|비계와 살이 세 겹인 돼지고기
+떡볶이|음식|가래떡을 고추장에 볶은 간식
+만두|음식|밀가루 피에 소를 넣어 빚은 음식
+칼국수|음식|반죽을 칼로 썰어 만든 국수
+수제비|음식|반죽을 손으로 뜯어 넣고 끓인 음식
+국수|음식|잔치 때 먹는 가늘고 긴 면
+팥죽|음식|동짓날 먹는 붉은 죽
+호박죽|음식|늙은 호박으로 쑨 노란 죽
+누룽지|음식|솥 바닥에 눌어붙은 밥
+주먹밥|음식|손으로 뭉쳐 만든 밥
+볶음밥|음식|밥과 재료를 기름에 볶은 음식
+짬뽕|음식|해물과 채소를 넣은 얼큰한 중국식 국수
+군고구마|음식|겨울에 드럼통에 구워 파는 간식
+호떡|음식|설탕을 넣어 기름에 지진 겨울 간식
+붕어빵|음식|물고기 모양 틀에 팥을 넣어 구운 간식
+찐빵|음식|김에 쪄 낸 팥소 든 빵
+인절미|음식|콩고물을 묻힌 찰떡
+가래떡|음식|길고 둥글게 뽑은 흰 떡
+시루떡|음식|시루에 쪄서 팥고물을 얹은 떡
+약과|음식|꿀과 기름으로 만든 전통 과자
+곶감|음식|껍질을 벗겨 말린 감
+깍두기|음식|무를 네모나게 썰어 담근 김치
+동치미|음식|국물을 시원하게 마시는 무 물김치
+장아찌|음식|채소를 간장이나 된장에 오래 절인 반찬
+나물|음식|산과 들의 풀을 데쳐 무친 반찬
+계란말이|음식|달걀을 부쳐 돌돌 만 반찬
+생선구이|음식|물고기를 구운 반찬
+반찬|음식|밥에 곁들여 먹는 음식
+도시락|음식|밖에서 먹으려고 싸 가는 밥
+식혜|음료|밥알이 동동 뜨는 달콤한 전통 음료
+수정과|음료|계피와 생강으로 만들어 곶감을 띄운 음료
+막걸리|음료|쌀로 빚은 뿌연 전통 술
+소주|음료|초록 병에 담긴 맑은 술
+맥주|음료|거품이 이는, 보리로 만든 술
+보리차|음료|볶은 곡식을 끓인 구수한 차
+유자차|음료|노란 과일청을 뜨거운 물에 탄 차
+생강차|음료|감기 기운 있을 때 마시는 알싸한 차
+주스|음료|과일을 짜서 만든 음료
+콜라|음료|톡 쏘는 검은색 탄산음료
+사이다|음료|톡 쏘는 투명한 탄산음료
+요구르트|음료|유산균이 든 새콤한 작은 음료
+된장|양념|콩을 발효시킨 구수한 장
+고추장|양념|매콤한 붉은 장
+간장|양념|짠맛을 내는 검은 장
+참기름|양념|깨를 볶아 짠 고소한 기름
+식초|양념|신맛을 내는 조미료
+후추|양념|톡 쏘는 검은 가루 양념
+고춧가루|양념|김치 담글 때 쓰는 붉은 가루
+젓갈|양념|새우나 멸치를 소금에 삭힌 것
+김장|살림|겨울을 앞두고 김치를 한꺼번에 담그는 일
+빨래|살림|더러워진 옷을 빠는 일
+설거지|살림|먹고 난 그릇을 씻는 일
+잔치|문화|기쁜 일에 음식을 차려 손님을 대접하는 일
+냄비|부엌|국이나 찌개를 끓이는 손잡이 달린 그릇
+프라이팬|부엌|달걀을 부칠 때 쓰는 납작한 팬
+도마|부엌|칼질할 때 밑에 받치는 판
+국자|부엌|국을 뜨는 긴 손잡이 도구
+주걱|부엌|밥을 푸는 넓적한 도구
+숟가락|부엌|밥이나 국을 떠먹는 도구
+젓가락|부엌|반찬을 집는 두 짝의 막대
+밥그릇|부엌|밥을 담는 그릇
+접시|부엌|음식을 담는 납작한 그릇
+뚝배기|부엌|찌개를 끓이는 투박한 흙 그릇
+항아리|부엌|장이나 김치를 담는 배가 불룩한 그릇
+장독|부엌|간장, 된장을 담아 두는 큰 독
+가마솥|부엌|옛날 부뚜막에 걸던 큰 무쇠 솥
+밥솥|부엌|밥을 짓는 기구
+행주|부엌|그릇이나 상을 닦는 천
+수세미|부엌|설거지할 때 문지르는 도구
+쟁반|부엌|음식을 받쳐 나르는 넓은 판
+밥상|부엌|밥을 차려 먹는 상
+식탁|부엌|의자에 앉아 밥을 먹는 탁자
+앞치마|부엌|요리할 때 옷 앞에 두르는 천
+전자레인지|기계·가전|음식을 빠르게 데우는 기계
+가스레인지|기계·가전|불을 켜서 요리하는 기구
+머리카락|몸|머리에 난 털
+이마|몸|눈썹 위의 넓은 부분
+눈썹|몸|눈 위에 가로로 난 털
+입술|몸|입의 가장자리, 붉고 부드러운 부분
+어깨|몸|목과 팔이 이어지는 부분
+허리|몸|배와 등의 가운데 잘록한 부분
+무릎|몸|다리를 굽히는 관절
+발가락|몸|발끝의 다섯 갈래
+손가락|몸|손끝의 다섯 갈래
+손바닥|몸|손의 안쪽 넓은 면
+손톱|몸|손가락 끝의 단단한 부분
+엉덩이|몸|앉을 때 바닥에 닿는 부분
+배꼽|몸|배 한가운데 오목한 곳
+가슴|몸|목과 배 사이의 앞부분
+심장|몸|피를 온몸에 보내는 기관
+허파|몸|숨을 쉬는 기관
+주름|몸|나이 들며 피부에 생기는 줄
+보조개|몸|웃을 때 볼에 패는 우묵한 곳
+발바닥|몸|걸을 때 땅에 닿는 발의 밑면
+팔꿈치|몸|팔을 굽히는 관절
+대문|집|집 앞의 큰 문
+마당|집|집 앞의 평평한 빈 땅
+마루|집|방과 방 사이 널빤지를 깐 곳
+부엌|집|밥을 짓고 음식을 만드는 곳
+안방|집|집주인 부부가 쓰는 방
+다락방|집|지붕 밑에 만든 작은 방
+창문|집|빛과 바람이 드나드는 벽의 문
+지붕|집|집의 맨 위를 덮는 것
+기와집|전통 가옥|지붕을 구운 흙판으로 덮은 집
+초가집|전통 가옥|지붕을 볏짚으로 덮은 집
+아파트|집|여러 집이 층층이 모인 높은 건물
+계단|집|오르내리게 층층이 만든 것
+베란다|집|아파트에서 빨래를 너는 곳
+굴뚝|집|연기가 빠져나가는 높은 통로
+온돌|집|방바닥을 데우는 우리 고유의 난방
+아궁이|집|불을 때는 구멍
+담장|집|집 둘레를 막아 쌓은 것
+우물|집|땅을 파서 물을 긷는 곳
+한옥|집|우리 고유의 전통 집
+장롱|가구|옷이나 이불을 넣는 큰 가구
+서랍|가구|빼고 닫는 상자 모양 칸
+옷장|가구|옷을 걸어 두는 가구
+침대|가구|잠을 자는 가구
+소파|가구|거실에 두는 푹신한 긴 의자
+방석|가구|앉을 때 까는 작은 요
+베개|생활용품|잘 때 머리를 받치는 것
+빗자루|생활용품|바닥을 쓰는 도구
+쓰레받기|생활용품|쓸어 모은 먼지를 담는 도구
+걸레|생활용품|바닥을 닦는 천
+다리미|기계·가전|옷의 주름을 펴는 뜨거운 도구
+선풍기|기계·가전|날개가 돌아 바람을 일으키는 기계
+에어컨|기계·가전|방을 시원하게 하는 기계
+텔레비전|기계·가전|방송을 보는 기계
+리모컨|기계·가전|멀리서 기계를 켜고 끄는 작은 장치
+휴대폰|기계·가전|들고 다니는 전화
+엘리베이터|기계·가전|층 사이를 오르내리는 상자
+전등|생활용품|불을 밝히는 기구
+촛불|생활용품|초에 붙인 불
+손전등|생활용품|들고 다니며 비추는 작은 등
+열쇠|생활용품|자물쇠를 여는 것
+자물쇠|생활용품|문을 잠그는 장치
+안경|생활용품|눈이 잘 보이도록 쓰는 것
+돋보기|생활용품|작은 글씨를 크게 보여 주는 볼록 렌즈
+지팡이|생활용품|걸을 때 짚는 막대
+부채|생활용품|흔들어 바람을 일으키는 것
+손수건|생활용품|주머니에 넣고 다니는 작은 천
+지갑|생활용품|돈이나 카드를 넣는 것
+도장|생활용품|이름을 새겨 찍는 것
+바늘|생활용품|실을 꿰어 바느질하는 도구
+골무|생활용품|바느질할 때 손가락에 끼는 것
+보자기|생활용품|물건을 싸는 네모난 천
+효자손|생활용품|혼자 등을 긁는 도구
+저금통|생활용품|동전을 모으는 통
+우표|생활용품|편지 봉투에 붙이는 작은 종이
+단추|옷·잡화|옷을 여미는 동그란 것
+치마|옷·잡화|여자가 입는 아래가 트인 옷
+저고리|옷·잡화|한복의 윗옷
+두루마기|옷·잡화|한복 위에 입는 긴 겉옷
+버선|옷·잡화|한복에 신는 하얀 발싸개
+고무신|옷·잡화|고무로 만든 옛날 신
+양말|옷·잡화|발에 신는 천
+목도리|옷·잡화|추울 때 목에 두르는 것
+외투|옷·잡화|옷 위에 덧입는 겉옷
+잠옷|옷·잡화|잘 때 입는 옷
+속옷|옷·잡화|겉옷 안에 입는 옷
+조끼|옷·잡화|소매가 없는 윗옷
+넥타이|옷·잡화|양복 셔츠 목에 매는 긴 천
+허리띠|옷·잡화|바지가 흘러내리지 않게 매는 띠
+양복|옷·잡화|남자의 서양식 정장
+비옷|옷·잡화|비 올 때 입는 옷
+반지|옷·잡화|손가락에 끼는 고리 장신구
+목걸이|옷·잡화|목에 거는 장신구
+귀걸이|옷·잡화|귀에 다는 장신구
+소나기|날씨|여름에 갑자기 쏟아지다 그치는 비
+태풍|날씨|여름에 강한 비바람을 몰고 오는 폭풍
+번개|날씨|구름 사이에 번쩍이는 빛
+천둥|날씨|번쩍인 뒤에 우르르 울리는 소리
+안개|날씨|땅 가까이 낀 뿌연 물방울
+이슬|날씨|새벽 풀잎에 맺히는 물방울
+서리|날씨|추운 새벽 땅에 하얗게 내리는 얼음
+우박|날씨|하늘에서 떨어지는 얼음 덩어리
+함박눈|날씨|굵고 탐스럽게 내리는 눈
+눈보라|날씨|바람에 휘몰아치는 눈
+고드름|날씨|처마 끝에 거꾸로 매달린 얼음
+햇빛|자연|해가 비추는 빛
+햇살|자연|해에서 쏟아지는 빛줄기
+노을|자연|해 질 녘 하늘이 붉게 물드는 것
+달빛|자연|밤에 달에서 비치는 빛
+보름달|자연|음력 15일 밤의 둥근 달
+초승달|자연|음력 초에 뜨는 눈썹 모양 달
+은하수|자연|밤하늘에 강처럼 보이는 별 무리
+북극성|자연|북쪽 하늘에 늘 떠 있어 길잡이가 되는 별
+산봉우리|자연|산의 뾰족한 꼭대기
+계곡|자연|산과 산 사이 물이 흐르는 골짜기
+폭포|자연|절벽에서 물이 곧장 떨어지는 곳
+시냇물|자연|작은 내에 흐르는 물
+바위|자연|아주 큰 돌
+자갈|자연|잘고 동글동글한 돌
+진흙|자연|물기가 있어 질척한 흙
+갯벌|자연|밀물 때 잠기고 썰물 때 드러나는 땅
+파도|자연|바다에 일렁이는 물결
+밀물|자연|바닷물이 육지 쪽으로 들어오는 것
+썰물|자연|바닷물이 빠져나가는 것
+모래사장|자연|바닷가의 넓은 모래밭
+동굴|자연|땅속으로 깊게 뚫린 굴
+사막|자연|비가 거의 오지 않는 모래 땅
+빙산|자연|바다에 떠 있는 거대한 얼음덩이
+들판|자연|넓게 펼쳐진 평평한 땅
+단풍|자연|가을에 붉고 노랗게 물든 잎
+낙엽|자연|가을에 떨어진 잎
+새싹|자연|새로 돋아나는 어린 싹
+열매|자연|꽃이 지고 맺히는, 씨를 품은 것
+새벽|때·시기|해 뜨기 전 어스름한 때
+한낮|때·시기|해가 가장 높이 뜬 낮
+저녁|때·시기|해 질 무렵부터 밤이 되기까지
+한밤중|때·시기|깊은 밤
+오늘|때·시기|지금 지나고 있는 이날
+내일|때·시기|오늘의 다음 날
+어제|때·시기|오늘의 바로 전날
+모레|때·시기|내일의 다음 날
+그저께|때·시기|어제의 전날
+올해|때·시기|지금 지나고 있는 해
+작년|때·시기|지난해
+내년|때·시기|다음 해
+생일|때·시기|태어난 날
+정월|때·시기|음력 1월
+동지|때·시기|밤이 가장 긴 날, 팥죽을 먹는다
+환갑|문화·명절|나이 예순한 살을 축하하는 잔치
+칠순|문화·명절|나이 일흔 살을 기념하는 잔치
+단오|문화·명절|음력 5월 5일, 그네 뛰고 창포물에 머리 감는 날
+대보름|문화·명절|음력 1월 15일, 부럼을 깨는 날
+한식|문화·명절|동지 뒤 105일째, 찬 음식을 먹는 날
+어린이날|문화·명절|5월 5일, 아이들을 위한 날
+어버이날|문화·명절|5월 8일, 부모님께 카네이션을 드리는 날
+광복절|문화·명절|8월 15일, 나라를 되찾은 날
+한글날|문화·명절|10월 9일, 우리 글자를 기리는 날
+성탄절|문화·명절|12월 25일, 크리스마스
+우체국|장소|편지와 소포를 보내는 곳
+은행|장소|돈을 맡기고 찾는 곳
+약국|장소|약을 지어 파는 곳
+경찰서|장소|경찰이 일하는 곳
+소방서|장소|빨간 소방차가 대기하는 곳
+시청|장소|시의 행정을 맡아보는 관청
+경로당|장소|어르신들이 모여 쉬는 곳
+목욕탕|장소|여럿이 함께 씻는 큰 욕탕이 있는 곳
+찜질방|장소|뜨거운 방에서 땀을 빼며 쉬는 곳
+이발소|장소|남자 머리를 깎아 주는 곳
+시골|장소|도시에서 떨어진 논밭이 많은 곳
+고향|장소|태어나서 자란 곳
+마을|장소|여러 집이 모여 사는 곳
+정자|장소|경치 좋은 곳에 지은 쉬는 집
+운동장|장소|달리고 뛰놀도록 넓게 만든 마당
+수영장|장소|헤엄칠 수 있게 물을 채운 곳
+극장|장소|영화나 공연을 보는 곳
+박물관|장소|옛 물건을 전시하는 곳
+미술관|장소|그림이나 조각을 전시하는 곳
+백화점|장소|여러 물건을 층층이 파는 큰 상점
+편의점|장소|밤낮없이 문을 여는 작은 가게
+세탁소|장소|옷을 빨고 다려 주는 가게
+철물점|장소|못과 연장을 파는 가게
+방앗간|장소|떡을 하고 고추를 빻는 곳
+공항|장소|비행기가 뜨고 내리는 곳
+항구|장소|배가 드나드는 곳
+터미널|장소|버스가 출발하고 도착하는 곳
+고속도로|장소|자동차만 빠르게 달리는 넓은 길
+경주|지명|신라의 옛 도읍, 불국사가 있는 도시
+전주|지명|비빔밥과 한옥마을로 유명한 도시
+대구|지명|사과와 더위로 유명한 경상도 도시
+광주|지명|전라도의 가장 큰 도시
+대전|지명|충청도의 큰 도시, 과학의 도시
+인천|지명|국제공항이 있는 항구 도시
+강원도|지명|설악산과 동해가 있는 도
+독도|지명|동해 끝에 있는 우리 땅 섬
+울릉도|지명|오징어로 유명한 동해의 섬
+설악산|지명|강원도의 이름난 산, 흔들바위가 있다
+한라산|지명|제주도에 있는 남한에서 가장 높은 산
+지리산|지명|전라도와 경상도에 걸친 큰 산
+백두산|지명|천지가 있는 한반도에서 가장 높은 산
+금강산|지명|일만 이천 봉으로 유명한 북한의 명산
+낙동강|지명|영남 지방을 흐르는 긴 강
+동해|지명|우리나라 동쪽 바다
+남해|지명|우리나라 남쪽 바다
+서해|지명|우리나라 서쪽 바다
+버스|탈것|정해진 길을 다니며 여러 사람을 태우는 차
+택시|탈것|돈을 내고 원하는 곳까지 타는 차
+트럭|탈것|짐을 싣는 차
+여객선|탈것|손님을 태우는 배
+돛단배|탈것|바람을 받아 가는 배
+경운기|탈것|농촌에서 쓰는 작은 농기계 차
+트랙터|탈것|밭을 가는 큰 농기계
+오토바이|탈것|엔진이 달린 두 바퀴 탈것
+헬리콥터|탈것|날개가 위에서 돌아가는 비행 기계
+소방차|탈것|불을 끄러 가는 빨간 차
+유모차|탈것|아기를 태우고 미는 수레
+리어카|탈것|사람이 끄는 두 바퀴 수레
+가마|탈것|옛날 사람을 태우고 메고 가던 것
+할아버지|가족|아버지의 아버지
+할머니|가족|아버지의 어머니
+손자|가족|아들이나 딸의 아들
+손녀|가족|아들이나 딸의 딸
+아들|가족|자식 가운데 남자
+며느리|가족|아들의 아내
+사위|가족|딸의 남편
+삼촌|가족|아버지의 남자 형제
+이모|가족|어머니의 여자 형제
+고모|가족|아버지의 여자 형제
+외삼촌|가족|어머니의 남자 형제
+사촌|가족|삼촌이나 이모의 자식
+형제|가족|형과 아우
+자매|가족|언니와 여동생
+남편|가족|결혼한 여자의 짝
+아내|가족|결혼한 남자의 짝
+부부|가족|남편과 아내
+조카|가족|형제자매의 자식
+식구|가족|한집에 살며 끼니를 함께하는 사람
+이웃|인물|가까이 사는 사람
+신랑|인물|결혼하는 남자
+신부|인물|결혼하는 여자
+농부|직업|논밭에서 농사를 짓는 사람
+어부|직업|고기를 잡는 사람
+목수|직업|나무로 집이나 가구를 만드는 사람
+간호사|직업|병원에서 환자를 돌보는 사람
+약사|직업|약을 지어 주는 사람
+판사|직업|법정에서 판결을 내리는 사람
+변호사|직업|법정에서 사람을 변호하는 사람
+교수|직업|대학교에서 가르치는 사람
+우체부|직업|편지를 배달하는 사람
+운전사|직업|차를 모는 사람
+미용사|직업|머리를 손질해 주는 사람
+작가|직업|글을 쓰는 사람
+감독|직업|영화를 만들거나 경기를 지휘하는 사람
+선장|직업|배를 책임지는 사람
+조종사|직업|비행기를 모는 사람
+과학자|직업|자연의 이치를 연구하는 사람
+윷놀이|전통 놀이|네 가락을 던져 말을 옮기는 설날 놀이
+제기차기|놀이|발로 제기를 차올리는 놀이
+연날리기|놀이|바람에 연을 띄우는 놀이
+팽이|놀이|채로 쳐서 돌리는 장난감
+딱지치기|놀이|종이 딱지를 쳐서 넘기는 놀이
+구슬치기|놀이|유리구슬을 맞히는 놀이
+공기놀이|전통 놀이|작은 돌 다섯 개를 던지고 받는 놀이
+술래잡기|놀이|술래가 다른 아이를 잡는 놀이
+숨바꼭질|놀이|숨은 사람을 찾는 놀이
+널뛰기|놀이|긴 널빤지 양 끝에서 번갈아 뛰는 놀이
+화투|놀이|꽃 그림이 그려진 48장의 패로 하는 놀이
+바둑|놀이|흰 돌과 검은 돌로 집을 짓는 놀이
+장기|놀이|초나라와 한나라로 나뉘어 하는 말판 놀이
+씨름|스포츠|샅바를 잡고 상대를 넘어뜨리는 경기
+강강술래|문화|추석 밤 손을 잡고 원을 돌며 부르는 놀이
+탈춤|문화|탈을 쓰고 추는 전통 춤
+판소리|문화|소리꾼이 북장단에 맞춰 이야기를 노래하는 것
+아리랑|문화|대표적인 우리 민요
+사물놀이|문화|꽹과리, 징, 장구, 북으로 하는 연주
+세배|문화|설날 어른께 드리는 절
+세뱃돈|문화|설날 절을 하고 받는 돈
+제사|문화|돌아가신 조상을 기리는 의식
+성묘|문화|조상의 묘를 찾아가 돌보는 일
+벌초|문화|추석 전 묘의 풀을 베는 일
+족보|문화|집안의 계보를 적은 책
+돌잔치|문화|아기의 첫 생일 잔치
+결혼식|문화|신랑과 신부가 부부가 되는 예식
+폐백|문화|혼례 뒤 신부가 시부모께 드리는 인사
+장구|악기|허리가 잘록한 전통 타악기
+가야금|악기|열두 줄의 전통 현악기
+거문고|악기|술대로 뜯는 여섯 줄 전통 악기
+단소|악기|대나무로 만든 짧은 세로 피리
+꽹과리|악기|사물놀이에서 쨍쨍 울리는 작은 징
+하모니카|악기|입으로 불고 빨아 소리 내는 작은 악기
+국어|공부|우리말을 배우는 과목
+영어|공부|미국, 영국 말을 배우는 과목
+과학|공부|자연의 이치를 배우는 과목
+역사|공부|지난 일을 배우는 과목
+음악|공부|노래와 악기를 배우는 과목
+체육|공부|몸을 움직이며 배우는 과목
+받아쓰기|공부|불러 주는 말을 듣고 적는 것
+구구단|공부|이일은 이부터 외우는 곱셈표
+졸업식|공부|학교를 마치는 행사
+입학식|공부|학교에 처음 들어가는 행사
+운동회|공부|학교에서 달리기, 줄다리기를 하는 행사
+공책|학용품|글씨를 쓰는 빈 책
+크레파스|학용품|그림 그리는 막대 모양 물감
+물감|학용품|물에 풀어 칠하는 색깔
+필통|학용품|연필을 넣어 다니는 통
+웃음|생각·행동|기쁠 때 터져 나오는 소리나 표정
+눈물|생각·행동|슬프거나 아플 때 눈에서 나는 물
+걱정|생각·행동|잘못될까 봐 마음을 졸이는 것
+기쁨|생각·행동|마음이 즐겁고 흐뭇한 느낌
+행복|생각·행동|넉넉하고 기쁜 마음의 상태
+희망|생각·행동|앞일에 대한 좋은 기대
+용기|생각·행동|두려움을 이기는 씩씩한 마음
+약속|생각·행동|앞으로 할 일을 미리 정해 두는 것
+칭찬|생각·행동|잘한 일을 높이 평가하는 말
+인내|생각·행동|괴로움을 참고 견디는 것
+효도|생각·행동|부모님을 잘 모시는 일
+정성|생각·행동|온갖 힘을 다하려는 참된 마음
+추억|생각·행동|지난 일을 돌이켜 생각함
+낮잠|생각·행동|낮에 자는 잠
+박수|생각·행동|손뼉을 치는 것
+농담|말·언어|웃기려고 하는 말
+속담|말·언어|옛날부터 전해 오는 교훈이 담긴 짧은 말
+수수께끼|말·언어|답을 알아맞히는 말놀이
+사투리|말·언어|어느 지방에서만 쓰는 말
+잔소리|말·언어|쓸데없이 늘어놓는 꾸중이나 참견
+노랫말|말·언어|노래의 가사
+등산|스포츠|산에 오르는 일
+낚시|스포츠|물고기를 낚는 일
+탁구|스포츠|작은 공을 탁자 위에서 주고받는 경기
+골프|스포츠|작은 공을 채로 쳐서 구멍에 넣는 경기
+마라톤|스포츠|42.195킬로미터를 달리는 경기
+줄다리기|스포츠|양쪽에서 줄을 당겨 겨루는 경기
+배드민턴|스포츠|깃털 공을 라켓으로 주고받는 경기
+체조|스포츠|몸을 고르게 움직이는 운동
+태권도|스포츠|우리나라의 전통 무술
+올림픽|스포츠|4년마다 열리는 세계 운동 경기 대회
+월급|생활·사회|한 달 동안 일하고 받는 돈
+용돈|생활·사회|자유롭게 쓰라고 받는 돈
+동전|생활·사회|쇠붙이로 만든 돈
+지폐|생활·사회|종이로 만든 돈
+세금|생활·사회|나라에 내는 돈
+선거|생활·사회|투표로 대표를 뽑는 일
+신호등|생활·사회|빨간불, 초록불로 길을 알려 주는 등
+횡단보도|생활·사회|사람이 길을 건너는 흰 줄무늬 길
+건널목|생활·사회|철길이나 찻길을 건너다니는 곳
+소포|생활·사회|우편으로 보내는 꾸러미
+택배|생활·사회|물건을 집 앞까지 배달해 주는 일
+주소|생활·사회|사는 곳을 나타내는 행정 구역 이름과 번지
+전화번호|생활·사회|전화를 걸 때 누르는 숫자
+신분증|생활·사회|자기가 누구인지 증명하는 카드
+보약|약초|몸의 기운을 돋우는 한약
+한약|약초|풀뿌리와 나무껍질을 달여 만든 약
+감기|몸|콧물과 기침이 나는 흔한 병
+기침|몸|목에서 콜록콜록 나는 것
+재채기|몸|코가 간지러울 때 에취 하고 나는 것
+딸꾹질|몸|횡격막이 떨려 딸꾹 소리가 나는 것
+체온|몸|몸의 따뜻한 정도
+맥박|몸|심장이 뛸 때마다 손목에서 느껴지는 뜀
+산책로|장소|천천히 걷도록 만든 길
+공중전화|기계·가전|길거리에 있어 동전을 넣고 쓰는 전화
+전화기|기계·가전|수화기를 들고 통화하는 기계
+사진기|기계·가전|사진을 찍는 기계, 카메라
+녹음기|기계·가전|소리를 담아 두는 기계
+전축|기계·가전|레코드판을 돌려 음악을 듣는 기계
+재봉틀|기계·가전|옷을 박는 기계
+난로|기계·가전|방을 데우는 기구
+연탄|생활용품|구멍이 숭숭 뚫린 검은 땔감
+장작|생활용품|쪼개 놓은 땔나무
+성냥|생활용품|그어서 불을 붙이는 작은 개비
+라이터|생활용품|눌러서 불을 붙이는 작은 기구
+양초|생활용품|심지에 불을 붙여 밝히는 것
+화로|생활용품|숯불을 담아 두는 그릇
+절구|부엌|곡식을 넣고 공이로 찧는 통
+맷돌|부엌|두 짝의 둥근 돌을 돌려 곡식을 가는 기구
+키질|살림|곡식의 티를 까불러 골라내는 일
+다듬이|살림|옷감을 방망이로 두드려 반드럽게 하는 일
+바느질|살림|바늘로 옷을 짓거나 꿰매는 일
+뜨개질|살림|털실로 옷이나 목도리를 뜨는 일
+장보기|살림|시장에 가서 물건을 사는 일
+청소|살림|더러운 것을 쓸고 닦는 일
+이사|살림|사는 곳을 옮기는 일
+집들이|문화|이사한 뒤 손님을 불러 대접하는 일
+손님|인물|찾아온 사람
+어른|인물|다 자란 사람, 윗사람
+어린이|인물|나이가 어린 아이
+청년|인물|젊은 남자, 젊은이
+노인|인물|나이가 많은 사람
+주인|인물|물건이나 가게를 가진 사람
+나그네|인물|길을 떠나 떠도는 사람
+장사꾼|인물|물건을 파는 사람
+부자|인물|재산이 많은 사람
+임금님|인물|옛날 나라를 다스리던 분
+왕비|인물|임금의 아내
+왕자|인물|임금의 아들
+선비|인물|옛날 글공부를 하던 사람
+양반|인물|옛날 높은 신분의 사람
+세종대왕|인물|한글을 만든 조선의 임금
+이순신|인물|거북선으로 나라를 지킨 장군
+신사임당|인물|오만 원권 지폐에 그려진 조선의 예술가
+유관순|인물|3·1 운동 때 만세를 부른 소녀
+거북선|탈것|이순신 장군이 만든 철갑선
+첨성대|문화|경주에 있는 신라의 별 보던 탑
+불국사|문화|경주에 있는 신라의 절, 다보탑이 있다
+남대문|문화|서울의 옛 성문, 숭례문
+경복궁|문화|조선의 첫 궁궐
+훈민정음|문화|세종대왕이 만든 글자의 처음 이름
+대한민국|나라|우리나라의 이름
+미국|나라|자유의 여신상이 있는 나라
+일본|나라|우리나라 동쪽 바다 건너 이웃 나라
+중국|나라|만리장성이 있는 큰 나라
+영국|나라|런던이 수도인 섬나라
+프랑스|나라|에펠탑이 있는 나라
+독일|나라|베를린이 수도인 유럽 나라
+러시아|나라|세계에서 가장 넓은 나라
+호주|나라|캥거루가 사는 나라
+인도|나라|갠지스 강이 흐르는 인구가 많은 나라
+이집트|나라|피라미드가 있는 나라
+브라질|나라|축구를 잘하고 아마존이 있는 나라
+캐나다|나라|단풍잎 국기의 나라
+베트남|나라|쌀국수로 유명한 동남아 나라
+태국|나라|코끼리와 불교 사원이 많은 동남아 나라
+일석이조|사자성어|돌 하나로 새 두 마리를 잡듯, 한 번에 두 가지 이득을 봄
+유비무환|사자성어|미리 준비해 두면 걱정할 일이 없음
+동문서답|사자성어|묻는 말에 엉뚱한 대답을 함
+우왕좌왕|사자성어|이리저리 왔다 갔다 하며 갈피를 못 잡음
+이심전심|사자성어|말하지 않아도 마음과 마음이 서로 통함
+작심삼일|사자성어|굳게 먹은 마음이 사흘을 못 감
+대기만성|사자성어|큰 그릇은 늦게 이루어짐, 큰 인물은 늦게 성공함
+금시초문|사자성어|이제 처음으로 들음
+십중팔구|사자성어|열 가운데 여덟이나 아홉, 거의 틀림없음
+천생연분|사자성어|하늘이 정해 준 인연
+백발백중|사자성어|쏘는 족족 다 맞힘
+자업자득|사자성어|자기가 한 일의 결과를 자기가 받음
+고진감래|사자성어|쓴 것이 다하면 단 것이 옴, 고생 끝에 낙이 옴
+새옹지마|사자성어|인생의 좋고 나쁜 일은 미리 알 수 없음
+오리무중|사자성어|짙은 안개 속처럼 일의 갈피를 알 수 없음
+일편단심|사자성어|한 조각 붉은 마음, 변치 않는 정성
+전화위복|사자성어|나쁜 일이 오히려 좋은 일로 바뀜
+청출어람|사자성어|제자가 스승보다 나음
+동고동락|사자성어|괴로움과 즐거움을 함께함
+과유불급|사자성어|지나침은 모자람과 같음
+역지사지|사자성어|처지를 바꾸어 생각해 봄
+다다익선|사자성어|많으면 많을수록 좋음
+설상가상|사자성어|눈 위에 서리가 덮임, 나쁜 일이 겹침
+사필귀정|사자성어|모든 일은 반드시 바른 길로 돌아감
+우유부단|사자성어|망설이기만 하고 결단을 내리지 못함
+풍전등화|사자성어|바람 앞의 등불처럼 몹시 위태로움
+진퇴양난|사자성어|나아갈 수도 물러설 수도 없는 처지
+산전수전|사자성어|산에서도 물에서도 싸웠다, 온갖 일을 다 겪음
+동병상련|사자성어|같은 처지의 사람끼리 서로 가엾게 여김
+온고지신|사자성어|옛것을 익혀 새것을 앎
+금상첨화|사자성어|비단 위에 꽃을 더함, 좋은 일에 또 좋은 일
+일취월장|사자성어|나날이 다달이 발전함
+이구동성|사자성어|여러 사람이 입을 모아 같은 말을 함
+조삼모사|사자성어|아침에 셋 저녁에 넷, 얕은 꾀로 남을 속임
+죽마고우|사자성어|대나무 말을 타고 놀던 어릴 적 친구
+결초보은|사자성어|풀을 묶어 은혜를 갚음, 죽어서도 잊지 않고 보답함
+막상막하|사자성어|누가 더 낫고 못한지 가리기 어려움
+박장대소|사자성어|손뼉을 치며 크게 웃음
+애지중지|사자성어|매우 아끼고 소중히 여김
+어부지리|사자성어|둘이 다투는 사이 엉뚱한 사람이 이득을 봄
+일사천리|사자성어|일이 막힘없이 빨리 진행됨
+적반하장|사자성어|도둑이 도리어 몽둥이를 듦
+천고마비|사자성어|하늘은 높고 말은 살찐다, 가을을 이르는 말
+화룡점정|사자성어|용 그림에 눈동자를 찍음, 가장 중요한 마무리
+구사일생|사자성어|아홉 번 죽을 뻔하다 한 번 살아남
+임기응변|사자성어|그때그때 상황에 맞게 대처함
+감언이설|사자성어|달콤한 말과 이로운 조건으로 꾀는 말
+부전자전|사자성어|아버지와 아들이 닮음
+팔방미인|사자성어|여러 방면에 두루 능한 사람
+외양간|속담|소 잃고 ○○○ 고친다
+등잔|속담|○○ 밑이 어둡다
+돌다리|속담|○○○도 두들겨 보고 건너라
+천냥|속담|말 한마디로 ○○ 빚을 갚는다
+티끌|속담|○○ 모아 태산
+태산|속담|티끌 모아 ○○
+여든|속담|세 살 버릇 ○○까지 간다
+백지장|속담|○○○도 맞들면 낫다
+사공|속담|○○이 많으면 배가 산으로 간다
+구슬|속담|○○이 서 말이라도 꿰어야 보배
+하룻강아지|속담|○○○○○ 범 무서운 줄 모른다
+방귀|속담|○○ 뀐 놈이 성낸다
+서당개|속담|○○○ 삼 년이면 풍월을 읊는다
+개천|속담|○○에서 용 난다
+짚신|속담|○○도 제짝이 있다
+발등|속담|믿는 도끼에 ○○ 찍힌다
+꼬리|속담|○○가 길면 밟힌다
+번갯불|속담|○○○에 콩 볶아 먹겠다
+식후경|속담|금강산도 ○○○
+가재|속담|○○는 게 편
+빨강|색깔|사과, 소방차, 신호등 멈춤의 색
+노랑|색깔|병아리, 개나리, 바나나의 색
+파랑|색깔|맑은 하늘과 바다의 색
+초록|색깔|풀잎과 나뭇잎의 색
+보라|색깔|포도와 가지의 색
+주황|색깔|귤과 당근의 색
+분홍|색깔|진달래와 벚꽃의 색
+하양|색깔|눈과 우유의 색
+검정|색깔|까마귀와 숯의 색
+하늘색|색깔|맑은 하늘처럼 연한 파란색
+연두|색깔|봄 새싹 같은 연한 초록색
+남색|색깔|짙은 파란색, 쪽빛
+갈색|색깔|초콜릿이나 가을 낙엽의 색
+회색|색깔|재나 쥐의 털 같은 색
+금색|색깔|황금처럼 번쩍이는 색
+은색|색깔|은처럼 희게 빛나는 색
+하나|숫자|가장 작은 자연수, 첫째
+다섯|숫자|한 손의 손가락 수
+여섯|숫자|다섯 다음의 수
+일곱|숫자|무지개 빛깔의 수
+여덟|숫자|문어 다리의 수
+아홉|숫자|열에서 하나 모자란 수
+스물|숫자|열의 두 배
+서른|숫자|열의 세 배
+마흔|숫자|열의 네 배
+예순|숫자|열의 여섯 배, 환갑 즈음의 나이
+일흔|숫자|열의 일곱 배, 칠순의 나이
+아흔|숫자|열의 아홉 배
+행성|우주|해 둘레를 도는 큰 천체
+화성|우주|붉은빛을 띠는 태양계의 넷째 행성
+금성|우주|새벽과 저녁에 가장 밝게 빛나는 행성, 샛별
+목성|우주|태양계에서 가장 큰 행성
+토성|우주|아름다운 고리를 가진 행성
+로켓|우주|불을 뿜으며 하늘로 솟구치는 비행체
+우주선|탈것|사람을 태우고 하늘 너머로 가는 배
+인공위성|우주|지구 둘레를 돌며 방송과 날씨를 돕는 기계
+망원경|과학|멀리 있는 것을 가깝게 보는 기구
+현미경|과학|아주 작은 것을 크게 보는 기구
+온도계|과학|덥고 추운 정도를 재는 기구
+나침반|과학|늘 북쪽을 가리키는 바늘이 든 기구
+무게|과학|물건이 무거운 정도
+체중계|생활용품|몸무게를 재는 기구
+등잔불|옛날 물건|기름을 부어 심지에 불을 붙이던 옛날 등
+호롱불|옛날 물건|석유를 넣어 켜던 작은 등불
+물레|옛날 물건|솜에서 실을 뽑던 바퀴 달린 기구
+멍석|옛날 물건|짚으로 엮어 곡식을 널던 큰 깔개
+지게|옛날 물건|짐을 얹어 등에 지던 나무 기구
+쟁기|옛날 물건|소가 끌며 논밭을 갈던 농기구
+호미|옛날 물건|김을 매는 작은 농기구
+광주리|옛날 물건|대나 싸리로 엮은 둥근 그릇
+소쿠리|옛날 물건|채소를 씻어 물기를 빼던 대그릇
+바구니|옛날 물건|대나 플라스틱으로 엮은 담는 그릇
+똬리|옛날 물건|물동이를 머리에 일 때 받치던 고리
+요강|옛날 물건|방에 두고 쓰던 뚜껑 있는 오줌 그릇
+다듬잇돌|옛날 물건|옷감을 두드릴 때 받치던 돌
+인두|옛날 물건|숯불에 달궈 옷 주름을 펴던 도구
+풍금|옛날 물건|교실에서 발로 밟아 연주하던 건반 악기
+괘종시계|옛날 물건|땡땡 종을 치던 벽에 거는 큰 시계
+만화책|옛날 물건|그림과 말풍선으로 이야기를 담은 책
+달고나|옛날 물건|설탕을 녹여 모양을 찍어 먹던 간식
+교복|옛날 물건|학생들이 맞춰 입는 옷
+카세트|옛날 물건|테이프를 넣어 노래를 듣던 기계
+삐삐|옛날 물건|숫자로 연락을 받던 작은 호출기
+모내기|농사|논에 어린 벼를 옮겨 심는 일
+추수|농사|가을에 다 익은 곡식을 거두는 일
+타작|농사|곡식 이삭을 털어 낟알을 거두는 일
+허수아비|농사|새를 쫓으려고 논에 세운 사람 모양
+볏짚|농사|벼 이삭을 떨고 남은 줄기
+품앗이|농사|서로 번갈아 일을 거들어 주는 것
+새참|농사|일하다가 먹는 간단한 음식
+원두막|농사|참외밭을 지키려고 높이 지은 막
+논두렁|농사|논과 논 사이에 흙으로 쌓은 둑
+거름|농사|식물이 잘 자라게 흙에 주는 것
+닭장|농사|닭을 가두어 기르는 곳
+트로트|음악|꺾는 창법이 특징인 우리 대중가요
+민요|음악|예부터 백성들 사이에 전해 오는 노래
+동요|음악|어린이를 위한 노래
+가곡|음악|시에 곡을 붙인 서정적인 노래
+합창|음악|여러 사람이 함께 부르는 노래
+지휘자|음악|합창단이나 악단 앞에서 박자를 맞추는 사람
+악보|음악|음악을 기호로 적은 것
+박자|음악|음악의 빠르기를 이루는 일정한 마디
+노래방|음악|반주에 맞춰 노래를 부르는 곳
+무용|예술|음악에 맞춰 몸으로 표현하는 춤
+서예|예술|붓으로 글씨를 쓰는 예술
+붓글씨|예술|붓에 먹을 찍어 쓴 글씨
+도자기|예술|흙을 빚어 구운 그릇
+백자|예술|조선 시대의 흰 도자기
+청자|예술|고려 시대의 푸른빛 도자기
+흥부|옛이야기|제비 다리를 고쳐 주고 박에서 보물을 얻은 착한 동생
+놀부|옛이야기|욕심 많은 형, 제비 다리를 부러뜨림
+심청|옛이야기|아버지 눈을 뜨게 하려고 인당수에 몸을 던진 효녀
+콩쥐|옛이야기|계모에게 구박받다 두꺼비의 도움을 받은 착한 딸
+팥쥐|옛이야기|착한 언니를 괴롭히던 계모의 딸
+춘향|옛이야기|이몽룡과 사랑을 지킨 남원의 여인
+홍길동|옛이야기|동에 번쩍 서에 번쩍 하던 의적
+선녀|옛이야기|하늘에서 내려와 나무꾼과 살게 된 여인
+나무꾼|옛이야기|산에서 땔나무를 해 오는 사람
+도깨비|옛이야기|방망이를 휘두르며 금 나와라 뚝딱 하는 요괴
+혹부리|옛이야기|노래를 잘해 도깨비에게 혹을 판 할아버지
+견우|옛이야기|칠석날 오작교에서 직녀를 만나는 목동
+직녀|옛이야기|칠석날 오작교에서 견우를 만나는 베 짜는 여인
+오작교|옛이야기|까마귀와 까치가 놓아 준 다리
+단군|옛이야기|고조선을 세운 우리 민족의 시조
+별주부|옛이야기|토끼의 간을 구하러 뭍에 나온 자라
+광개토대왕|역사|고구려의 영토를 크게 넓힌 임금
+장영실|역사|측우기와 해시계를 만든 조선의 과학자
+강감찬|역사|귀주 대첩에서 거란을 물리친 고려의 장군
+을지문덕|역사|살수 대첩에서 수나라를 물리친 고구려 장군
+안중근|역사|하얼빈에서 이토 히로부미를 저격한 독립운동가
+김구|역사|대한민국 임시 정부를 이끈 독립운동가, 백범
+정약용|역사|수원 화성 설계에 참여한 조선 후기 실학자
+고구려|역사|주몽이 세운 삼국 시대의 나라
+백제|역사|온조가 세운 삼국 시대의 나라
+신라|역사|삼국을 통일한 나라, 수도는 경주
+고려|역사|왕건이 세운 나라, 청자로 유명
+조선|역사|이성계가 세운 나라, 수도는 한양
+한양|역사|조선 시대 서울의 이름
+측우기|역사|비가 온 양을 재던 조선의 기구
+해시계|역사|그림자로 시간을 알려 주던 시계
+반짝반짝|흉내말|작은 별이 빛나는 모양
+멍멍|흉내말|강아지 우는 소리
+개굴개굴|흉내말|개구리 우는 소리
+뒤뚱뒤뚱|흉내말|오리가 몸을 흔들며 걷는 모양
+깡충깡충|흉내말|토끼가 뛰는 모양
+살금살금|흉내말|남이 모르게 조용히 걷는 모양
+주룩주룩|흉내말|비가 세차게 내리는 소리
+두근두근|흉내말|가슴이 설레어 뛰는 소리
+꼬르륵|흉내말|배고플 때 배에서 나는 소리
+싱글벙글|흉내말|입을 벌리고 환하게 웃는 모양
+엉금엉금|흉내말|거북이가 느리게 기어가는 모양
+데굴데굴|흉내말|둥근 것이 구르는 모양
+보슬보슬|흉내말|가는 비가 조용히 내리는 모양
+소곤소곤|흉내말|작은 목소리로 속삭이는 소리
+쿨쿨|흉내말|깊이 잠들어 코 고는 소리
+콜록콜록|흉내말|기침하는 소리
+펄럭펄럭|흉내말|깃발이 바람에 날리는 모양
+꼬끼오|흉내말|새벽에 수탉이 우는 소리
+음매|흉내말|소나 송아지가 우는 소리
+야옹|흉내말|고양이 우는 소리
+크다|반대말|'작다'의 반대말
+작다|반대말|'크다'의 반대말
+높다|반대말|'낮다'의 반대말
+낮다|반대말|'높다'의 반대말
+길다|반대말|'짧다'의 반대말
+짧다|반대말|'길다'의 반대말
+무겁다|반대말|'가볍다'의 반대말
+가볍다|반대말|'무겁다'의 반대말
+뜨겁다|반대말|'차갑다'의 반대말
+차갑다|반대말|'뜨겁다'의 반대말
+밝다|반대말|'어둡다'의 반대말
+어둡다|반대말|'밝다'의 반대말
+넓다|반대말|'좁다'의 반대말
+좁다|반대말|'넓다'의 반대말
+빠르다|반대말|'느리다'의 반대말
+느리다|반대말|'빠르다'의 반대말
+기쁘다|반대말|'슬프다'의 반대말
+슬프다|반대말|'기쁘다'의 반대말
+쉽다|반대말|'어렵다'의 반대말
+어렵다|반대말|'쉽다'의 반대말
+두껍다|반대말|'얇다'의 반대말
+얇다|반대말|'두껍다'의 반대말
+깨끗하다|반대말|'더럽다'의 반대말
+더럽다|반대말|'깨끗하다'의 반대말
+부지런하다|반대말|'게으르다'의 반대말
+게으르다|반대말|'부지런하다'의 반대말
+통장|경제|은행에 맡긴 돈의 기록이 적힌 작은 책
+적금|경제|매달 일정한 돈을 부어 모으는 저축
+이자|경제|돈을 맡기거나 빌린 대가로 붙는 돈
+영수증|경제|돈을 받았다는 표시로 주는 종이
+할인|경제|정해진 값에서 얼마를 깎아 줌
+장바구니|생활용품|장 볼 때 물건을 담는 바구니
+`;
+
+const WORD_BANK = (() => {
+  const seen = new Set();
+  const out = [];
+  for (const line of WORD_BANK_RAW.split('\n')) {
+    const parts = line.split('|').map(x => x.trim());
+    if (parts.length < 2 || !parts[0]) continue;
+    // 형식: 단어|분류|힌트  (분류를 생략하고 단어|힌트 로 써도 됨)
+    const [w, cat, clue] = parts.length >= 3 ? parts : [parts[0], '', parts[1]];
+    if (seen.has(w)) continue;
+    seen.add(w);
+    out.push({ w, s: Array.from(w), cat, clue });
+  }
+  return out;
+})();
+
+let SUBSET = 0.8;   // 판마다 사전의 80%만 사용
+const SIZE = 11;   // 모든 판은 11×11
+const LEVELS = {
+  easy:   { label: '쉬움',   target: 12, max: SIZE, size: SIZE },
+  normal: { label: '보통',   target: 17, max: SIZE, size: SIZE },
+  hard:   { label: '어려움', target: 22, max: SIZE, size: SIZE },
+};
+
+// 같은 시드면 항상 같은 퍼즐이 나오도록 하는 난수 생성기
+function makeRng(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+let rand = Math.random;
+
+// 스테이지 설정: 50개씩 한 장(章), 장이 오를수록 단어가 많아진다. 판은 모두 11×11
+const CHAPTERS = ['새싹', '떡잎', '줄기', '꽃봉오리', '꽃', '열매', '단풍', '낙엽', '첫눈', '정상'];
+const PER_CHAPTER = 50;
+const STAGE_COUNT = CHAPTERS.length * PER_CHAPTER;   // 500
+function stageConfig(n) {
+  const ch = Math.floor((n - 1) / PER_CHAPTER);      // 0..9
+  const step = (n - 1) % PER_CHAPTER;                // 0..49
+  const target = 12 + ch + (step >= 25 ? 1 : 0);     // 12 → 22 단어 (장마다 +1, 장 후반 +1)
+  return { max: SIZE, size: SIZE, target, seed: 1000 + n * 7919, chapter: ch, step };
+}
+
+function shuffle(a) {
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function buildOnce(bank, target, max, frame) {
+  const cells = new Map();          // "r,c" -> { ch, h, v }
+  const byChar = new Map();         // ch -> Set of "r,c"
+  const placed = [];
+  const used = new Set();
+  let b = null;                     // bounds
+  const key = (r, c) => r + ',' + c;
+  const get = (r, c) => cells.get(key(r, c));
+
+  function check(s, r, c, dir, first) {
+    const dr = dir === 'v' ? 1 : 0, dc = dir === 'h' ? 1 : 0, L = s.length;
+    if (get(r - dr, c - dc) || get(r + dr * L, c + dc * L)) return -1;
+    let cross = 0;
+    for (let i = 0; i < L; i++) {
+      const rr = r + dr * i, cc = c + dc * i, cell = get(rr, cc);
+      if (cell) {
+        if (cell.ch !== s[i] || cell[dir]) return -1;
+        cross++;
+      } else if (get(rr + dc, cc + dr) || get(rr - dc, cc - dr)) {
+        return -1;
+      }
+    }
+    if (!first && (cross === 0 || cross === L)) return -1;
+    if (frame) {
+      // 고정 판: 0..frame-1 안에만 놓는다
+      const r2 = r + dr * (L - 1), c2 = c + dc * (L - 1);
+      if (r < 0 || c < 0 || r2 >= frame || c2 >= frame) return -1;
+      return cross * 10 + rand() * 8;   // 교차 우선, 나머지는 무작위로 고르게
+    }
+    if (b) {
+      const r2 = r + dr * (L - 1), c2 = c + dc * (L - 1);
+      const h = Math.max(b.r1, r2) - Math.min(b.r0, r) + 1;
+      const w = Math.max(b.c1, c2) - Math.min(b.c0, c) + 1;
+      if (h > max || w > max) return -1;
+      return cross * 10 - (h * w) / 20;   // 교차 우선, 그다음 촘촘하게
+    }
+    return cross;
+  }
+
+  function place(entry, r, c, dir) {
+    const dr = dir === 'v' ? 1 : 0, dc = dir === 'h' ? 1 : 0, s = entry.s;
+    for (let i = 0; i < s.length; i++) {
+      const rr = r + dr * i, cc = c + dc * i, k = key(rr, cc);
+      let cell = cells.get(k);
+      if (!cell) {
+        cell = { ch: s[i], h: false, v: false };
+        cells.set(k, cell);
+        if (!byChar.has(s[i])) byChar.set(s[i], new Set());
+        byChar.get(s[i]).add(k);
+      }
+      cell[dir] = true;
+    }
+    const r2 = r + dr * (s.length - 1), c2 = c + dc * (s.length - 1);
+    b = b ? { r0: Math.min(b.r0, r), r1: Math.max(b.r1, r2), c0: Math.min(b.c0, c), c1: Math.max(b.c1, c2) }
+          : { r0: r, r1: r2, c0: c, c1: c2 };
+    placed.push({ entry, r, c, dir });
+    used.add(entry.w);
+  }
+
+  // 판마다 단어 사전의 일부만 써서 스테이지마다 단어가 고르게 바뀌도록
+  const pool = shuffle(bank.slice()).slice(0, frame ? Math.max(300, Math.floor(bank.length * SUBSET)) : bank.length);
+  const first = pool.find(e => e.s.length >= 3 && e.s.length <= Math.min(4, max));
+  if (frame) {
+    const d = rand() < 0.5 ? 'h' : 'v', mid = Math.floor(frame / 2), off = Math.floor((frame - first.s.length) / 2);
+    place(first, d === 'h' ? mid : off, d === 'h' ? off : mid, d);
+  } else {
+    place(first, 0, 0, rand() < 0.5 ? 'h' : 'v');
+  }
+
+  while (placed.length < target) {
+    let best = [], bestScore = -Infinity;
+    for (const e of pool) {
+      if (used.has(e.w) || e.s.length > max) continue;
+      for (let i = 0; i < e.s.length; i++) {
+        const spots = byChar.get(e.s[i]);
+        if (!spots) continue;
+        for (const k of spots) {
+          const [r, c] = k.split(',').map(Number);
+          const cell = cells.get(k);
+          for (const dir of ['h', 'v']) {
+            if (cell[dir]) continue;
+            const r0 = dir === 'v' ? r - i : r, c0 = dir === 'h' ? c - i : c;
+            const sc = check(e.s, r0, c0, dir, false);
+            if (sc < 0) continue;
+            if (sc > bestScore + 0.001) { bestScore = sc; best = [[e, r0, c0, dir]]; }
+            else if (Math.abs(sc - bestScore) <= 0.001) best.push([e, r0, c0, dir]);
+          }
+        }
+      }
+    }
+    if (!best.length) break;
+    const pick = best[Math.floor(rand() * best.length)];
+    place(...pick);
+  }
+  return { placed, b };
+}
+
+// opts: { target, max, seed? }  seed가 있으면 항상 같은 퍼즐
+function generatePuzzle(opts, bank = WORD_BANK) {
+  const { target, max, seed, size } = typeof opts === 'string' ? LEVELS[opts] : opts;
+  rand = seed != null ? makeRng(seed) : Math.random;
+  let best = null, bestScore = -1;
+  for (let attempt = 0; attempt < 60; attempt++) {
+    const res = buildOnce(bank, target, max, size);
+    const score = res.placed.length;
+    if (score > bestScore) { best = res; bestScore = score; }
+    if (score >= target) break;
+  }
+  return finalize(best, size);
+}
+
+function finalize({ placed, b }, size) {
+  const rows = size || b.r1 - b.r0 + 1, cols = size || b.c1 - b.c0 + 1;
+  if (size) b = { r0: 0, c0: 0 };   // 고정 판은 좌표가 이미 0..size-1
+  const sol = Array.from({ length: rows }, () => Array(cols).fill(null));
+  const words = placed.map(p => ({
+    r: p.r - b.r0, c: p.c - b.c0, dir: p.dir,
+    answer: p.entry.s, text: p.entry.w, clue: p.entry.clue, cat: p.entry.cat,
+  }));
+  for (const w of words) {
+    w.answer.forEach((ch, i) => {
+      const r = w.r + (w.dir === 'v' ? i : 0), c = w.c + (w.dir === 'h' ? i : 0);
+      sol[r][c] = ch;
+    });
+  }
+  // standard numbering: row-major, one number per starting cell
+  const nums = Array.from({ length: rows }, () => Array(cols).fill(0));
+  let n = 0;
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+    const starts = words.filter(w => w.r === r && w.c === c);
+    if (starts.length) { n++; nums[r][c] = n; starts.forEach(w => (w.num = n)); }
+  }
+  words.sort((a, b) => a.num - b.num || (a.dir === 'h' ? -1 : 1));
+  words.forEach((w, i) => (w.id = i));
+  return { rows, cols, sol, nums, words };
+}
+
+// 초성 추출: 사과 → ㅅㄱ
+const CHO = 'ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ';
+function choseong(chars) {
+  return chars.map(ch => {
+    const code = ch.charCodeAt(0) - 0xAC00;
+    return code >= 0 && code < 11172 ? CHO[Math.floor(code / 588)] : ch;
+  }).join(' ');
+}
+
+function cellsOf(w) {
+  return w.answer.map((_, i) => [w.r + (w.dir === 'v' ? i : 0), w.c + (w.dir === 'h' ? i : 0)]);
+}
+
+
+
+(function () {
+  const $ = id => document.getElementById(id);
+  const store = {
+    get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
+  };
+
+  // 힌트 점수: 분류 1점, 초성 2점, 한 글자 공개 3점, 정답 보기 5점
+  const COST = { cat: 1, cho: 2, letter: 3, reveal: 5 };
+  const starsFor = pts => (pts === 0 ? 3 : pts <= 6 ? 2 : 1);
+  const VERSION = 3;
+  let zoom = !!store.get('cw-zoom');
+  let inputMode = store.get('cw-input') || 'choice';   // 'choice' = 보기에서 고르기, 'keyboard' = 직접 입력
+  const CHOICE_COUNT = 6;
+  const byLen = {};
+  WORD_BANK.forEach(e => (byLen[e.s.length] = byLen[e.s.length] || []).push(e));
+
+  let S = null;          // 현재 게임
+  let P = store.get('cw-progress') || { stars: {}, best: {} };   // 스테이지 진행
+  let wordAt = [];
+  let wrong = new Set();
+  let tick = null;
+  let pending = null;
+
+  const K = (r, c) => r + ',' + c;
+  const fmt = s => String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+  const starStr = n => '★'.repeat(n) + `<span class="off">${'★'.repeat(3 - n)}</span>`;
+  const cleared = () => Object.keys(P.stars).length;
+  const unlockedUpTo = () => {
+    let n = 1;
+    while (P.stars[n]) n++;
+    return Math.min(n, STAGE_COUNT);
+  };
+
+  /* ---------------- 스테이지 지도 ---------------- */
+  function showHome() {
+    stopTimer();
+    save();
+    $('game').hidden = true;
+    $('doneBox').hidden = true;
+    $('home').hidden = false;
+    const total = Object.values(P.stars).reduce((a, b) => a + b, 0);
+    $('sumStars').textContent = `${total} / ${STAGE_COUNT * 3}`;
+    $('sumBar').style.width = (total / (STAGE_COUNT * 3) * 100) + '%';
+    $('sumCleared').textContent = `${cleared()} / ${STAGE_COUNT}`;
+    const open = unlockedUpTo();
+    $('continueBtn').textContent = cleared() === 0 ? '스테이지 1 시작하기'
+      : P.stars[open] ? `스테이지 ${open} 다시 하기` : `스테이지 ${open} 이어서 하기`;
+    $('continueBtn').onclick = () => openStage(open);
+    const box = $('chapters');
+    box.innerHTML = '';
+    const openCh = Math.floor((open - 1) / PER_CHAPTER);
+    CHAPTERS.forEach((name, ch) => {
+      const sec = document.createElement('details');
+      sec.className = 'chapter';
+      const first = ch * PER_CHAPTER + 1, last = first + PER_CHAPTER - 1;
+      const nums = Array.from({ length: PER_CHAPTER }, (_, i) => first + i);
+      const got = nums.reduce((a, n) => a + (P.stars[n] || 0), 0);
+      const done = nums.filter(n => P.stars[n]).length;
+      const c0 = stageConfig(first), c1 = stageConfig(last);
+      const locked = first > open;
+      sec.innerHTML = `<summary><span class="t">${ch + 1}장 · ${name}</span><span class="arrow" aria-hidden="true">›</span>
+        <span class="s">스테이지 ${first}~${last} · 단어 ${c0.target}~${c1.target}개<br>${locked ? '잠김' : `깬 스테이지 ${done}/${PER_CHAPTER} · ★ ${got}/${PER_CHAPTER * 3}`}</span></summary><div class="tiles"></div>`;
+      const tiles = sec.querySelector('.tiles');
+      let built = false;
+      const build = () => { if (built) return; built = true; nums.forEach(n => {
+        const t = document.createElement('button');
+        t.type = 'button';
+        const locked = n > open;
+        t.className = 'tile' + (locked ? ' locked' : '') + (n === open && !P.stars[n] ? ' next' : '');
+        t.disabled = locked;
+        const st = P.stars[n];
+        t.innerHTML = `<span class="num">${n}</span>` +
+          (locked ? '<span class="go">잠김</span>'
+            : st ? `<span class="stars">${starStr(st)}</span>`
+            : '<span class="go">도전!</span>');
+        t.setAttribute('aria-label', `스테이지 ${n}` + (locked ? ' 잠김' : st ? ` 별 ${st}개` : ' 도전 가능'));
+        if (!locked) t.addEventListener('click', () => openStage(n));
+        tiles.appendChild(t);
+      }); };
+      sec.addEventListener('toggle', () => { if (sec.open) build(); });
+      if (ch === openCh) { sec.open = true; build(); }
+      box.appendChild(sec);
+    });
+    window.scrollTo(0, 0);
+  }
+
+  /* ---------------- 게임 시작 ---------------- */
+  function freshState(mode, key, puz) {
+    return {
+      mode, key, puz,
+      fill: puz.sol.map(row => row.map(() => '')),
+      v: VERSION, rev: [], hintLv: {}, pts: 0, elapsed: 0, done: false,
+      active: { r: puz.words[0].r, c: puz.words[0].c, dir: puz.words[0].dir },
+    };
+  }
+
+  function openStage(n) {
+    const saved = store.get('cw-play');
+    if (saved && saved.v === VERSION && saved.mode === 'stage' && saved.key === n && !saved.done && saved.puz) S = saved;
+    else S = freshState('stage', n, generatePuzzle(stageConfig(n)));
+    enterGame();
+  }
+
+  function openFree(level) {
+    const saved = store.get('cw-play');
+    if (saved && saved.v === VERSION && saved.mode === 'free' && saved.key === level && !saved.done && saved.puz) S = saved;
+    else S = freshState('free', level, generatePuzzle(level));
+    enterGame();
+  }
+
+  function enterGame() {
+    wrong.clear();
+    $('home').hidden = true;
+    $('game').hidden = false;
+    $('doneBox').hidden = true;
+    hideConfirm();
+    if (S.mode === 'stage') {
+      const cfg = stageConfig(S.key);
+      $('stageName').innerHTML = `스테이지 ${S.key}<small>${cfg.chapter + 1}장 · ${CHAPTERS[cfg.chapter]} · 단어 ${S.puz.words.length}개</small>`;
+    } else {
+      $('stageName').innerHTML = `자유 모드<small>${LEVELS[S.key].label} · 단어 ${S.puz.words.length}개</small>`;
+    }
+    setupBoard();
+    render();
+    startTimer();
+    save();
+    window.scrollTo(0, 0);
+  }
+
+  function setupBoard() {
+    const { puz } = S;
+    wordAt = puz.sol.map(row => row.map(() => ({})));
+    puz.words.forEach(w => cellsOf(w).forEach(([r, c]) => (wordAt[r][c][w.dir] = w.id)));
+    const board = $('board');
+    board.style.gridTemplateColumns = `repeat(${puz.cols}, var(--cell))`;
+    applyZoom();
+    board.innerHTML = '';
+    for (let r = 0; r < puz.rows; r++) for (let c = 0; c < puz.cols; c++) {
+      const el = document.createElement(puz.sol[r][c] ? 'button' : 'div');
+      el.className = 'cell' + (puz.sol[r][c] ? '' : ' x');
+      el.dataset.r = r; el.dataset.c = c;
+      if (puz.sol[r][c]) {
+        el.type = 'button';
+        el.setAttribute('role', 'gridcell');
+        el.addEventListener('click', () => tapCell(r, c));
+      }
+      board.appendChild(el);
+    }
+    buildLists();
+  }
+
+  function buildLists() {
+    for (const dir of ['h', 'v']) {
+      const ol = $(dir === 'h' ? 'listH' : 'listV');
+      ol.innerHTML = '';
+      S.puz.words.filter(w => w.dir === dir).forEach(w => {
+        const li = document.createElement('li');
+        li.tabIndex = 0;
+        li.dataset.id = w.id;
+        li.innerHTML = `<span class="n">${w.num}</span><span class="t"><span class="c"></span> <span class="len">(${w.answer.length}글자)</span> <span class="hint"></span></span>`;
+        li.querySelector('.c').textContent = w.clue;
+        const go = () => { selectWord(w); if (inputMode === 'keyboard') $('answer').focus({ preventScroll: true }); };
+        li.addEventListener('click', go);
+        li.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
+        ol.appendChild(li);
+      });
+    }
+  }
+
+  /* ---------------- 상태 도우미 ---------------- */
+  const activeWord = () => {
+    const { r, c, dir } = S.active;
+    const id = wordAt[r][c][dir] ?? wordAt[r][c][dir === 'h' ? 'v' : 'h'];
+    return S.puz.words[id];
+  };
+  const isRev = (r, c) => S.rev.includes(K(r, c));
+  const wordSolved = w => cellsOf(w).every(([r, c]) => S.fill[r][c] === S.puz.sol[r][c]);
+  const hintText = w => {
+    const lv = S.hintLv[w.id] || 0, out = [];
+    if (lv >= 1 && w.cat) out.push(w.cat);
+    if (lv >= 2) out.push(choseong(w.answer));
+    return out;
+  };
+
+  function selectWord(w) { S.active = { r: w.r, c: w.c, dir: w.dir }; render(); }
+
+  function tapCell(r, c) {
+    if (S.done) return;
+    const a = S.active, here = wordAt[r][c];
+    if (a.r === r && a.c === c && here.h != null && here.v != null) a.dir = a.dir === 'h' ? 'v' : 'h';
+    else S.active = { r, c, dir: here[a.dir] != null ? a.dir : (here.h != null ? 'h' : 'v') };
+    render();
+    if (inputMode === 'keyboard') $('answer').focus({ preventScroll: true });
+  }
+
+  // 보기 만들기: 정답 1개 + 같은 글자 수의 다른 단어 (같은 분류를 조금 섞어 헷갈리게)
+  function getChoices(w) {
+    S.choices = S.choices || {};
+    if (S.choices[w.id]) return S.choices[w.id];
+    const inPuzzle = new Set(S.puz.words.map(x => x.text));
+    const pool = (byLen[w.answer.length] || []).filter(e => !inPuzzle.has(e.w));
+    const pickRandom = (arr, n) => { const a = arr.slice(); const out = []; while (a.length && out.length < n) out.push(a.splice(Math.floor(Math.random() * a.length), 1)[0].w); return out; };
+    const same = pickRandom(pool.filter(e => e.cat && e.cat === w.cat), 2);
+    const rest = pickRandom(pool.filter(e => !same.includes(e.w)), CHOICE_COUNT - 1 - same.length);
+    const list = [w.text, ...same, ...rest];
+    for (let i = list.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [list[i], list[j]] = [list[j], list[i]]; }
+    S.choices[w.id] = list;
+    return list;
+  }
+
+  function renderChoices(w, solved) {
+    const box = $('choices');
+    box.hidden = inputMode !== 'choice';
+    $('dock').hidden = inputMode !== 'keyboard';
+    $('modeBtn').innerHTML = inputMode === 'choice' ? '키보드로<small>직접 입력</small>' : '보기에서<small>고르기</small>';
+    $('skipBtn').hidden = inputMode !== 'choice';
+    $('checkBtn').hidden = inputMode !== 'keyboard';
+    if (inputMode !== 'choice') return;
+    box.innerHTML = '';
+    if (solved) {
+      box.innerHTML = '<p class="choices-note">맞힌 단어예요. 다른 문제를 골라 주세요.</p>';
+      return;
+    }
+    const misses = (S.miss && S.miss[w.id]) || [];
+    getChoices(w).forEach(text => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'choice' + (misses.includes(text) ? ' no' : '');
+      b.textContent = text;
+      b.disabled = misses.includes(text);
+      b.addEventListener('click', () => pick(w, text, b));
+      box.appendChild(b);
+    });
+  }
+
+  function pick(w, text, btn) {
+    if (S.done || wordSolved(w)) return;
+    if (text === w.text) {
+      btn.classList.add('yes');
+      cellsOf(w).forEach(([r, c]) => { S.fill[r][c] = S.puz.sol[r][c]; wrong.delete(K(r, c)); });
+      afterChange();
+      if (S.done) return;
+      toast('정답이에요!');
+      setTimeout(() => { if (!S.done) nextWord(1, true); }, 450);
+    } else {
+      S.miss = S.miss || {};
+      (S.miss[w.id] = S.miss[w.id] || []).push(text);
+      S.pts += 1;
+      btn.classList.add('no', 'shake');
+      btn.disabled = true;
+      toast('아니에요. 다시 골라 보세요. (힌트 점수 +1)');
+      $('liveStars').innerHTML = starStr(starsFor(S.pts));
+      save();
+    }
+  }
+
+  // 판 크게 보기: 칸을 52px로 키우고 판을 옆으로 밀어 볼 수 있게
+  function applyZoom() {
+    const cols = S.puz.cols;
+    $('board').style.setProperty('--cell', zoom ? '52px'
+      : `min(calc((100vw - 36px - ${cols - 1}px) / ${cols}), ${Math.floor(440 / cols)}px)`);
+    $('zoomBtn').textContent = zoom ? '판 한눈에' : '판 크게';
+    $('zoomBtn').setAttribute('aria-pressed', String(zoom));
+  }
+  function scrollToActive() {
+    if (!zoom) return;
+    const el = $('board').querySelector('.cell.cur');
+    const wrap = $('boardWrap');
+    if (el) wrap.scrollLeft = el.offsetLeft - wrap.clientWidth / 2 + el.offsetWidth / 2;
+  }
+
+  function chip(label, value, extra) {
+    const s = document.createElement('span');
+    s.className = 'chip' + (extra ? ' ' + extra : '');
+    const b = document.createElement('b');
+    b.textContent = label;
+    s.append(b, value);
+    return s;
+  }
+
+  /* ---------------- 그리기 ---------------- */
+  function render() {
+    const { puz, fill } = S;
+    const w = activeWord();
+    S.active.dir = w.dir;
+    const inWord = new Set(cellsOf(w).map(([r, c]) => K(r, c)));
+    const solvedCells = new Set();
+    puz.words.forEach(x => { if (wordSolved(x)) cellsOf(x).forEach(([r, c]) => solvedCells.add(K(r, c))); });
+    for (const el of $('board').children) {
+      const r = +el.dataset.r, c = +el.dataset.c;
+      if (!puz.sol[r][c]) continue;
+      const k = K(r, c);
+      el.textContent = fill[r][c];
+      if (puz.nums[r][c]) {
+        const n = document.createElement('span');
+        n.className = 'no'; n.textContent = puz.nums[r][c];
+        el.prepend(n);
+      }
+      el.classList.toggle('inword', inWord.has(k));
+      el.classList.toggle('cur', S.active.r === r && S.active.c === c);
+      el.classList.toggle('rev', isRev(r, c));
+      el.classList.toggle('wrong', wrong.has(k));
+      el.classList.toggle('done', solvedCells.has(k) && !isRev(r, c));
+      el.setAttribute('aria-label', `${r + 1}행 ${c + 1}열 ${fill[r][c] || '빈칸'}`);
+    }
+    $('clueTag').textContent = `${w.dir === 'h' ? '가로' : '세로'} ${w.num} · ${w.answer.length}글자`;
+    $('clueBody').textContent = w.clue;
+
+    // 힌트 칩
+    const lv = S.hintLv[w.id] || 0;
+    const hb = $('clueHint');
+    hb.innerHTML = '';
+    if (lv >= 1 && w.cat) hb.append(chip('분류', w.cat));
+    if (lv >= 2) hb.append(chip('초성', choseong(w.answer), 'cho'));
+
+    const solved = wordSolved(w);
+    const hintBtn = $('hintBtn');
+    const nextLv = (lv === 0 && !w.cat) ? 2 : lv + 1;
+    if (solved || lv >= 2) { hintBtn.innerHTML = solved ? '힌트' : '힌트<small>다 씀</small>'; hintBtn.disabled = true; }
+    else { hintBtn.innerHTML = nextLv === 1 ? `분류 힌트<small>+${COST.cat}점</small>` : `초성 힌트<small>+${COST.cho}점</small>`; hintBtn.disabled = false; }
+    $('letterBtn').disabled = solved;
+    $('revealBtn').disabled = solved;
+    renderChoices(w, solved);
+
+    document.querySelectorAll('.clue-list li').forEach(li => {
+      const x = puz.words[+li.dataset.id];
+      li.classList.toggle('on', x.id === w.id);
+      li.classList.toggle('solved', wordSolved(x));
+      li.querySelector('.hint').textContent = hintText(x).map(t => '· ' + t).join(' ');
+    });
+    $('liveStars').innerHTML = starStr(starsFor(S.pts));
+    $('timer').textContent = fmt(S.elapsed);
+    scrollToActive();
+  }
+
+  function toast(msg) {
+    $('toast').textContent = msg;
+    clearTimeout(toast.t);
+    toast.t = setTimeout(() => ($('toast').textContent = ''), 2800);
+  }
+
+  function nextWord(step, onlyUnsolved) {
+    const ws = S.puz.words, cur = activeWord().id;
+    for (let i = 1; i <= ws.length; i++) {
+      const w = ws[(cur + step * i + ws.length * i) % ws.length];
+      if (!onlyUnsolved || !wordSolved(w)) { selectWord(w); return true; }
+    }
+    return false;
+  }
+
+  /* ---------------- 조작 ---------------- */
+  function submit(e) {
+    e.preventDefault();
+    if (S.done) return;
+    const w = activeWord();
+    const chars = Array.from($('answer').value.replace(/\s+/g, ''));
+    if (!chars.length) { toast('정답을 입력한 뒤 [입력]을 누르세요.'); return; }
+    if (chars.length > w.answer.length) { toast(`${w.answer.length}글자 단어예요. 다시 입력해 주세요.`); return; }
+    const locked = (r, c) => {
+      const other = wordAt[r][c][w.dir === 'h' ? 'v' : 'h'];
+      return isRev(r, c) || (other != null && wordSolved(S.puz.words[other]));
+    };
+    cellsOf(w).forEach(([r, c], i) => {
+      if (i < chars.length && !locked(r, c)) { S.fill[r][c] = chars[i]; wrong.delete(K(r, c)); }
+    });
+    $('answer').value = '';
+    afterChange();
+    if (S.done) return;
+    if (wordSolved(w)) { toast('정답!'); nextWord(1, true); }
+    else if (chars.length === w.answer.length) toast('틀린 글자가 있어요. 가로·세로가 만나는 칸을 확인해 보세요.');
+    render();
+  }
+
+  function hint() {
+    if (S.done) return;
+    const w = activeWord();
+    if (wordSolved(w)) return;
+    const lv = S.hintLv[w.id] || 0;
+    if (lv >= 2) return;
+    const next = (lv === 0 && !w.cat) ? 2 : lv + 1;
+    S.hintLv[w.id] = next;
+    S.pts += next === 1 ? COST.cat : COST.cho;
+    toast(next === 1 ? '분류를 알려 드렸어요. 한 번 더 누르면 초성을 알려 드려요.' : '초성을 알려 드렸어요.');
+    afterChange();
+  }
+
+  // 한 글자 공개: 아직 안 맞은 칸 중 하나를 채운다 (가로·세로가 만나는 칸을 먼저)
+  function revealLetter() {
+    if (S.done) return;
+    const w = activeWord();
+    const cands = cellsOf(w).filter(([r, c]) => S.fill[r][c] !== S.puz.sol[r][c]);
+    if (!cands.length) { toast('이 단어는 이미 맞았어요.'); return; }
+    const other = w.dir === 'h' ? 'v' : 'h';
+    const cross = cands.filter(([r, c]) => wordAt[r][c][other] != null);
+    const [r, c] = (cross.length ? cross : cands)[0];
+    S.fill[r][c] = S.puz.sol[r][c];
+    S.rev.push(K(r, c)); wrong.delete(K(r, c));
+    S.pts += COST.letter;
+    toast(`한 글자를 채웠어요. 힌트 점수 +${COST.letter}`);
+    afterChange();
+  }
+
+  function clearWord() {
+    if (S.done) return;
+    const w = activeWord();
+    cellsOf(w).forEach(([r, c]) => {
+      const other = wordAt[r][c][w.dir === 'h' ? 'v' : 'h'];
+      const keep = isRev(r, c) || (other != null && wordSolved(S.puz.words[other]));
+      if (!keep) { S.fill[r][c] = ''; wrong.delete(K(r, c)); }
+    });
+    afterChange();
+  }
+
+  function check() {
+    if (S.done) return;
+    wrong.clear();
+    let empty = 0;
+    S.puz.sol.forEach((row, r) => row.forEach((ch, c) => {
+      if (!ch) return;
+      if (!S.fill[r][c]) empty++;
+      else if (S.fill[r][c] !== ch) wrong.add(K(r, c));
+    }));
+    toast(wrong.size ? `틀린 칸 ${wrong.size}개를 빨갛게 표시했어요.` : `틀린 칸은 없어요. 빈칸이 ${empty}개 남았어요.`);
+    render();
+  }
+
+  function revealWord() {
+    const w = activeWord();
+    cellsOf(w).forEach(([r, c]) => {
+      if (S.fill[r][c] !== S.puz.sol[r][c]) { S.fill[r][c] = S.puz.sol[r][c]; S.rev.push(K(r, c)); wrong.delete(K(r, c)); }
+    });
+    S.pts += COST.reveal;
+    afterChange();
+  }
+
+  function askConfirm(msg, fn) { pending = fn; $('confirmMsg').textContent = msg; $('confirmBox').hidden = false; }
+  function hideConfirm() { pending = null; $('confirmBox').hidden = true; }
+
+  function afterChange() {
+    if (!S.done && S.puz.words.every(wordSolved)) finish();
+    render();
+    save();
+  }
+
+  /* ---------------- 완성 ---------------- */
+  function finish() {
+    S.done = true;
+    stopTimer();
+    const stars = starsFor(S.pts);
+    let bestTxt, unlockTxt = '';
+    if (S.mode === 'stage') {
+      const n = S.key;
+      const firstClear = !P.stars[n];
+      P.stars[n] = Math.max(P.stars[n] || 0, stars);
+      const prevBest = P.best[n];
+      const isBest = prevBest == null || S.elapsed < prevBest;
+      if (isBest) P.best[n] = S.elapsed;
+      bestTxt = isBest ? `${fmt(S.elapsed)} (신기록)` : fmt(prevBest);
+      store.set('cw-progress', P);
+      if (firstClear && n < STAGE_COUNT) {
+        unlockTxt = (n % PER_CHAPTER === 0) ? `새 장이 열렸어요: ${n / PER_CHAPTER + 1}장 · ${CHAPTERS[n / PER_CHAPTER]}` : '다음 스테이지가 열렸어요!';
+      }
+      if (firstClear && n === STAGE_COUNT) unlockTxt = '모든 스테이지를 깼어요! 이제 별 3개에 도전해 보세요.';
+      $('doneTitle').textContent = `스테이지 ${n} 완성!`;
+      $('nextStageBtn').hidden = n >= STAGE_COUNT;
+      $('nextStageBtn').textContent = '다음 스테이지 ›';
+      $('doneStars').hidden = false;
+      $('doneRule').hidden = false;
+    } else {
+      const bk = 'cw-best-' + S.key;
+      const best = store.get(bk);
+      const isBest = best == null || S.elapsed < best;
+      if (isBest) store.set(bk, S.elapsed);
+      bestTxt = isBest ? `${fmt(S.elapsed)} (신기록)` : fmt(best);
+      $('doneTitle').textContent = '완성!';
+      $('nextStageBtn').hidden = false;
+      $('nextStageBtn').textContent = '새 퍼즐';
+      $('doneStars').hidden = true;
+      $('doneRule').hidden = true;
+    }
+    [...$('doneStars').children].forEach((s, i) => s.classList.toggle('on', i < stars));
+    $('doneUnlock').textContent = unlockTxt;
+    $('doneUnlock').hidden = !unlockTxt;
+    $('dTime').textContent = fmt(S.elapsed);
+    $('dHints').textContent = S.pts ? `${S.pts}점` : '0점 (힌트 없음)';
+    $('dBest').textContent = bestTxt;
+    $('doneBox').hidden = false;
+    ($('nextStageBtn').hidden ? $('retryBtn') : $('nextStageBtn')).focus();
+  }
+
+  function startTimer() {
+    stopTimer();
+    if (S.done) return;
+    tick = setInterval(() => {
+      if (document.hidden || S.done || $('game').hidden) return;
+      S.elapsed++;
+      $('timer').textContent = fmt(S.elapsed);
+      if (S.elapsed % 5 === 0) save();
+    }, 1000);
+  }
+  function stopTimer() { if (tick) clearInterval(tick); tick = null; }
+  function save() { if (S) store.set('cw-play', S); }
+
+  /* ---------------- 연결 ---------------- */
+  $('dock').addEventListener('submit', submit);
+  $('hintBtn').addEventListener('click', hint);
+  $('letterBtn').addEventListener('click', revealLetter);
+  $('zoomBtn').addEventListener('click', () => { zoom = !zoom; store.set('cw-zoom', zoom); applyZoom(); scrollToActive(); });
+  $('modeBtn').addEventListener('click', () => {
+    inputMode = inputMode === 'choice' ? 'keyboard' : 'choice';
+    store.set('cw-input', inputMode);
+    render();
+    if (inputMode === 'keyboard') $('answer').focus({ preventScroll: true });
+  });
+  $('skipBtn').addEventListener('click', () => { if (!nextWord(1, true)) nextWord(1, false); });
+  $('checkBtn').addEventListener('click', check);
+  $('revealBtn').addEventListener('click', () => {
+    if (S.done) return;
+    const w = activeWord();
+    if (wordSolved(w)) { toast('이 단어는 이미 맞았어요.'); return; }
+    askConfirm(`${w.num}번 ${w.dir === 'h' ? '가로' : '세로'} 정답을 볼까요? 힌트 점수 +${COST.reveal}`, revealWord);
+  });
+  $('confirmYes').addEventListener('click', () => { const fn = pending; hideConfirm(); fn && fn(); });
+  $('confirmNo').addEventListener('click', hideConfirm);
+  $('prevBtn').addEventListener('click', () => nextWord(-1, false));
+  $('nextBtn').addEventListener('click', () => nextWord(1, false));
+  $('backBtn').addEventListener('click', showHome);
+  $('toMapBtn').addEventListener('click', showHome);
+  $('retryBtn').addEventListener('click', () => {
+    S = S.mode === 'stage'
+      ? freshState('stage', S.key, generatePuzzle(stageConfig(S.key)))
+      : freshState('free', S.key, generatePuzzle(S.key));
+    enterGame();
+  });
+  $('nextStageBtn').addEventListener('click', () => {
+    if (S.mode === 'stage') openStage(S.key + 1);
+    else { S = freshState('free', S.key, generatePuzzle(S.key)); enterGame(); }
+  });
+  document.querySelectorAll('[data-free]').forEach(b => b.addEventListener('click', () => openFree(b.dataset.free)));
+
+  function start(data) {
+    if (data && data.P) P = data.P;
+    if (data && data.S && data.S.v === VERSION && data.screen === 'game') { S = data.S; enterGame(); }
+    else showHome();
+  }
+  window.claude?.hot?.snapshot?.(() => ({ S, P, screen: $('game').hidden ? 'home' : 'game' }));
+  window.claude?.hot?.ready ? window.claude.hot.ready(start) : start(window.claude?.hot?.data ?? {});
+})();
+
+</script>
+
+</body>
+</html>

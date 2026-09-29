@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- 3x3 원고지 칸 (안전 영역 36~72 안쪽) -->
+    <path android:fillColor="#FFFFFB" android:pathData="M33,33h13v13h-13z M47.5,33h13v13h-13z M33,47.5h13v13h-13z M47.5,47.5h13v13h-13z M62,47.5h13v13h-13z M47.5,62h13v13h-13z M62,62h13v13h-13z"/>
+    <path android:fillColor="#1D2622" android:pathData="M62,33h13v13h-13z M33,62h13v13h-13z"/>
+</vector>
